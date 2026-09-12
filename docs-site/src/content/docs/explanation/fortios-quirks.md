@@ -9,7 +9,7 @@ fails *silently*. Nothing errors, nothing logs, and the answer you get back is
 confidently wrong in a way that reads as plausible.
 
 Roughly half of them were not learned here. They came from
-[nautobot-ssot-fortinet](https://github.com/rsp2k/nautobot-ssot-fortinet), a
+[nautobot-ssot-fortinet](https://nautobot-ssot-fortinet.readthedocs.io), a
 bidirectional Nautobot ↔ FortiGate sync built against the same FortiWiFi-61E on
 the same firmware, and they were learned the expensive way — by writing to an
 appliance and finding out afterwards what a misread field had done. Reading a
@@ -34,7 +34,7 @@ bool("disable")           # True   — wrong, and silent
 fortios_bool("disable")   # False
 ```
 
-In [nautobot-ssot-fortinet](https://github.com/rsp2k/nautobot-ssot-fortinet)
+In [nautobot-ssot-fortinet](https://nautobot-ssot-fortinet.readthedocs.io)
 this exact mistake flipped every non-blackhole route to blackhole, and it
 survived until someone compared the sync output against the appliance by hand.
 That project writes, so the wrong reading became wrong configuration. Here it

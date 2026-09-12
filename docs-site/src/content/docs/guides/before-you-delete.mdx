@@ -31,9 +31,15 @@ denies.
   "total_references": 3,
   "candidate_tables": 74,
   "references": [
-    { "table": "firewall.policy", "object": "9", "attribute": "dstaddr" },
-    { "table": "firewall.addrgrp", "object": "ALL-SERVERS", "attribute": "member" }
+    { "table": "firewall.policy", "object": "9", "attribute": "dstaddr", "depth": 0 },
+    { "table": "firewall.addrgrp", "object": "ALL-SERVERS", "attribute": "member", "depth": 0 }
   ],
+  "total_transitive_references": 1,
+  "transitive_references": [
+    { "table": "firewall.policy", "object": "12", "attribute": "dstaddr",
+      "depth": 1, "via": ["ALL-SERVERS"] }
+  ],
+  "expansion": { "max_depth": 3, "status": "complete", "deepest_depth": 1 },
   "sources_checked": {
     "object_usage": "ok",
     "policies": "ok", "address_groups": "ok", "service_groups": "ok",
@@ -68,12 +74,21 @@ reference. A disabled policy is one somebody intends to turn back on, and
 deleting the object underneath it turns that into a surprise at the worst
 possible moment.
 
-**Group membership is not expanded.** `DMZ-SERVERS` is in `ALL-SERVERS`.
-Anything referencing `ALL-SERVERS` therefore depends on `DMZ-SERVERS`
-indirectly, and none of those policies appear in this result — they reference
-the group, not the object. The tool does not follow the chain for you. When
-`groups` is non-empty, run `find_references` again on each group name, and
-check that the model actually did rather than assuming it would.
+**Containers are walked through, into a separate list.** `DMZ-SERVERS` is in
+`ALL-SERVERS`, so anything referencing that group depends on the object
+indirectly. The appliance's own lookup names the group and stops there, so the
+tool continues the chain itself and puts what it finds in
+`transitive_references`, each row carrying the `depth` it was found at and a
+`via` chain of the containers that led to it.
+
+The two lists stay separate because **the remedy differs**. A direct reference
+is removed from the object holding it. A transitive one is removed by editing a
+container or a member list — and the policy that stops matching is not the
+object you edit.
+
+Check `expansion.status` before treating the transitive list as complete. Only
+`complete` means the chain ran out; `depth_capped` means containers are still
+unopened and `unexpanded` names them.
 
 ## The three answers that are not answers
 
@@ -158,11 +173,11 @@ know about, and it does.
 
 Two real limits remain:
 
-- **Group membership is not expanded transitively.** An object inside a
-  referenced group is reported as referenced by the group, not by the policies
-  that use the group.
-- **Other VDOMs are not consulted.** Every call is scoped to the configured
-  VDOM only.
+- **The container walk has a ceiling of three levels.** Deeper nesting than
+  that reports `expansion.status: depth_capped` rather than claiming it
+  finished, and names what it did not open.
+- **Other VDOMs are not consulted.** Every call is scoped to one VDOM, the
+  configured default unless you pass `vdom`.
 </Aside>
 
 The honest framing: this tool now answers *what does this appliance say points
@@ -193,9 +208,10 @@ start over. `indeterminate` or `no_references_in_checked_scopes` mean the rest
 of this workflow is premature, because you do not yet know what you are looking
 at. `referenced` gives you both the answer and the list of what to fix first.
 
-**Follow the groups.** Every name under `groups` gets its own
-`find_references` call, because membership is not expanded transitively. This
-is where indirect dependencies live, and it is the step most often skipped.
+**Check how far the walk got.** Indirect dependencies are already in
+`transitive_references`, so the step that used to mean *re-run this per group*
+now means *read `expansion.status`*. On `complete` you have them all. On
+`depth_capped` the names in `unexpanded` are the ones to run yourself.
 
 **Check what else shares the value.** `search_config` on the object's IP or
 subnet finds *other objects covering the same addresses*, which is the common
@@ -220,7 +236,7 @@ That division is the point rather than a limitation.
 
 If you want the change made *programmatically* rather than by hand, that is a
 different tool and it already exists:
-[nautobot-ssot-fortinet](https://github.com/rsp2k/nautobot-ssot-fortinet)
+[nautobot-ssot-fortinet](https://nautobot-ssot-fortinet.readthedocs.io)
 syncs FortiGate configuration in both directions against
 [Nautobot](https://nautobot.com/), with idempotent runs and destructive deletes
 off unless you opt in. Nautobot holds the intended state, the sync reconciles

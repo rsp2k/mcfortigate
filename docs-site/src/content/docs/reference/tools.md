@@ -747,8 +747,10 @@ scan. They are read once and reported once.
 policy listing it as both source and destination reports both rather than being
 counted twice.
 
-**Group membership is not expanded transitively.** An object inside a group
-that a policy uses is reported as referenced by the group, not by the policy.
+An object inside a group that a policy uses is reported by the appliance as
+referenced by the group, not by the policy. The tool continues that chain
+itself and reports what it finds in
+[`transitive_references`](#the-appliances-answer-is-not-transitive).
 
 #### Two FortiOS traps behind this
 
