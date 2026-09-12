@@ -128,6 +128,34 @@ remembering. A quarantine interface and an operator's VLAN are both
 `type: vlan` and are otherwise indistinguishable in the API. There is no flag
 that says *this one is mine*.
 
+## `reference_count` is zero on real references
+
+The reference-usage endpoint returns a `currently_using` list, and every row in
+it carries `reference_count: 0` — including rows that are genuine, load-bearing
+references.
+
+Sum that field and an object with two references reports zero. The row's
+*existence* is the signal; the count on it is decoration.
+
+This is the quirk most likely to be reintroduced, because summing a field named
+`reference_count` to get a reference count is the obvious thing to write, and
+the result looks plausible on an object that genuinely has none.
+
+## Asking the wrong table succeeds
+
+The same endpoint is asked about an object *within a named table*. Ask about a
+name that does not exist in the table you named, and FortiOS does not complain
+— it answers **HTTP 200 with an empty list**.
+
+So querying `firewall/address` about `wan1`, which is an interface, reports zero
+references for something with two. No error, no warning, no hint that the
+question was malformed.
+
+That is why `find_references` resolves what kind of object a name is by reading
+its defining cmdb table *before* asking about usage, and why `resolved_as`
+appears in the response — it is the tool showing its work on the step where
+being wrong is invisible.
+
 ## Why this list exists
 
 Every entry here shares a shape: the wrong reading produces a valid-looking

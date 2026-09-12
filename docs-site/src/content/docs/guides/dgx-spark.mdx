@@ -155,12 +155,12 @@ can be omitted. With several it is required, and the error names the valid
 aliases — a good model reads that and corrects itself on the next call, a weak
 one guesses again.
 
-**Does it read `verdict` or does it skim?** `find_references` returns
-`no_references`, `referenced`, or `indeterminate`, and on `indeterminate` there
-is deliberately **no** `safe_to_delete` key to latch onto. A model that reports
-"safe to delete" from an indeterminate answer has told you something important
-about itself, for free, on a question where being wrong later would be
-expensive.
+**Does it read `verdict` or does it skim?** `find_references` has five
+verdicts, and three of them deliberately carry **no** `safe_to_delete` key to
+latch onto. Ask it about a deliberately misspelled object name: the verdict is
+`object_not_found`, and a model that answers "yes, safe to delete" from that
+has told you something important about itself, for free, on exactly the kind of
+question where being wrong later is expensive.
 
 **Does it respect evaluation order?** Policies come back ordered, each carrying
 an explicit `order` index. A model that re-sorts them by ID has destroyed the

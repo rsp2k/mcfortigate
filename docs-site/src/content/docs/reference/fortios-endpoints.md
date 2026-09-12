@@ -11,7 +11,7 @@ knowing which questions are cheap and which are not.
 
 | Tool | Endpoints |
 |---|---|
-| `get_system_status` | `cmdb/system/global`, plus `monitor/system/status` for uptime |
+| `get_system_status` | `cmdb/system/global`, plus `monitor/system/status` and `monitor/system/resource/usage` |
 | `list_address_objects` | `cmdb/firewall/address` |
 | `list_address_groups` | `cmdb/firewall/addrgrp` |
 | `list_services` | `cmdb/firewall.service/custom` |
@@ -30,16 +30,37 @@ knowing which questions are cheap and which are not.
 | `get_arp_table` | `monitor/network/arp` |
 | `list_wifi_clients` | `monitor/wifi/client`, `monitor/system/dhcp`, `monitor/network/arp` |
 | `find_device` | `monitor/wifi/client`, `monitor/system/dhcp`, `monitor/network/arp` |
+| `find_references` | `monitor/system/object/usage` for the verdict, plus five cmdb reads for detail — [see below](#multi-call-tools) |
 
 ## Multi-call tools
 
 Two tools are worth more than one REST call each by design, because the
 question they answer spans object types that FortiOS keeps apart.
 
-`find_references` issues five calls: `cmdb/firewall/policy`,
-`cmdb/firewall/addrgrp`, `cmdb/firewall.service/group`, `cmdb/firewall/vip`,
-and `cmdb/router/static`. Ask *is this safe to delete* and all five run, because
-a reference in any one of them is a reason the answer is no.
+`find_references` is the heaviest, and it works in two layers.
+
+The **authoritative** layer is `monitor/system/object/usage`, which is the
+endpoint the web UI's reference counter calls. It knows every table FortiOS
+tracks references in — 234 of them for a system interface on 7.0.14 — and it is
+what the `verdict` and the `references` list come from.
+
+Reaching it takes one more step than you would expect. The endpoint is asked
+about an object *within a named table*, and asking the wrong table is not an
+error: query `firewall/address` about a name that is really an interface and
+FortiOS answers HTTP 200 with an empty list. So the tool first resolves what
+kind of object the name is by reading its defining cmdb table, and only then
+asks about usage. That resolution is reported back as `resolved_as`.
+
+The **detail** layer is the same five cmdb reads as before —
+`cmdb/firewall/policy`, `cmdb/firewall/addrgrp`, `cmdb/firewall.service/group`,
+`cmdb/firewall/vip`, `cmdb/router/static` — kept because they carry readable
+detail the usage endpoint does not, such as a policy's name and action. They
+are no longer the source of the verdict, only of the annotations on it.
+
+One counting trap lives here: every `currently_using` row comes back with
+`reference_count: 0`, including rows that are genuine references. The row's
+existence is the signal. Summing that field reports zero for an object with two
+references.
 
 `search_config` issues six by default: `cmdb/firewall/address`,
 `cmdb/firewall/addrgrp`, `cmdb/firewall.service/custom`,

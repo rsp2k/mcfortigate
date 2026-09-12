@@ -37,11 +37,10 @@ a raw wrapper and it spends most of its attention on `"srcaddr6": []` before it
 finds anything useful.
 
 So the tools here are shaped around the questions rather than around the
-endpoints. `find_references` is five REST calls collapsed into one answer about
-whether an object is safe to delete — an answer that is deliberately
-three-valued, because the client library turns a denied read into an empty list
-and a naive version of this tool reports a heavily-used object as unreferenced.
-`find_device` merges the wireless client list,
+endpoints. `find_references` answers whether an object is safe to delete by
+asking the appliance's own reference lookup — the one the web UI uses, which
+knows all 234 tables that can reference an interface rather than the five a
+hand-rolled scan would check. `find_device` merges the wireless client list,
 the DHCP lease table, and the ARP table into a single record per device, which
 requires normalizing MAC casing first because FortiOS reports it differently on
 each of those three endpoints. That work happens once, here, instead of being

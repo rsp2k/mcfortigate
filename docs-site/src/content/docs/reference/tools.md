@@ -363,109 +363,144 @@ absence means the whole address is mapped.
 
 ### `find_references`
 
-What points at an address, group, service, or interface, and whether that can
-be answered at all.
+What points at an address, group, service, virtual IP, or interface, and
+whether that can be answered at all.
 
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
-| `object_name` | string | required | Exact name of the object |
+| `object_name` | string | required | Exact name of the object. Matching is exact, not a search |
 | `target` | string | only appliance | Which FortiGate to query |
 
-This is the question that precedes every configuration change on a firewall.
-Behind it are five reads covering policies on both the address and the service
-side, address group and service group membership, virtual IPs, and static
-routes.
+This is the question that precedes every configuration change on a firewall,
+and **the authority for it is the appliance itself**. FortiOS exposes the same
+reference lookup its web UI uses, and this tool asks that endpoint rather than
+inferring an answer from a handful of tables.
 
-The answer is deliberately three-valued rather than a boolean, and
-[the reason is the whole point of the tool](#why-the-verdict-is-three-valued).
+It also scans policies, address groups, service groups, virtual IPs, and static
+routes directly, because those yield readable detail the lookup does not — a
+policy's name, whether it is enabled, whether it accepts or denies.
 
-```json
-{
-  "target": "edge",
-  "vdom": "root",
-  "object": "DMZ-SERVERS",
-  "verdict": "referenced",
-  "total_references": 3,
-  "sources_checked": {
-    "policies": "ok",
-    "address_groups": "ok",
-    "service_groups": "ok",
-    "vips": "ok",
-    "routes": "ok"
-  },
-  "checked_scopes": [
-    "firewall policies", "address groups", "service groups",
-    "virtual IPs", "static routes"
-  ],
-  "safe_to_delete": false,
-  "policies": [
-    { "id": 9, "name": "block-legacy-smb", "enabled": true, "action": "deny", "referenced_as": ["destination"] },
-    { "id": 12, "name": "dmz-mgmt", "enabled": false, "action": "accept", "referenced_as": ["destination", "source"] }
-  ],
-  "groups": [{ "name": "ALL-SERVERS", "kind": "address_group" }],
-  "vips": [],
-  "routes": []
-}
-```
+So the response has two halves. `references` is what the appliance says, and is
+authoritative. `policies`, `groups`, `vips`, and `routes` are the readable
+detail, and they cover five tables out of many.
 
-| `verdict` | Meaning |
+#### Why asking beats scanning
+
+On FortiOS 7.0.14, the number of tables that can hold a reference to an object:
+
+| Object kind | Tables that can reference it |
 |---|---|
-| `referenced` | Every source answered and at least one reference was found |
-| `no_references` | Every source answered and none of them mentions the object |
-| `indeterminate` | At least one source could not be read, so no conclusion is available |
+| System interface | 234 |
+| Firewall address | 74 |
+| Service | 17 |
 
-`safe_to_delete` is present **only when every source answered**. On an
-`indeterminate` verdict the key is absent entirely rather than set to `false`,
-and a `note` explains which reads failed:
+A five-table scan covers five of 234 for an interface. An address used only by
+a web-proxy profile came back clean, and `safe_to_delete: true` on an object
+that is very much in use is the worst answer this tool can give.
+
+A real case off the lab appliance, asking about `wan1`, abridged:
 
 ```json
 {
-  "object": "DMZ-SERVERS",
-  "verdict": "indeterminate",
-  "total_references": 1,
-  "sources_checked": {
-    "policies": "ok",
-    "address_groups": "ok",
-    "service_groups": "ok",
-    "vips": "ok",
-    "routes": "denied: http=403"
-  },
-  "note": "Could not read: routes. The reference count is a lower bound and no conclusion about deletion safety is possible."
+  "object": "wan1",
+  "verdict": "referenced",
+  "resolved_as": ["interface"],
+  "total_references": 2,
+  "candidate_tables": 234,
+  "references": [
+    { "table": "system.interface", "object": "ssot_test_vlan1", "looked_up_as": "interface", "attribute": "name" },
+    { "table": "firewall.policy", "object": "1", "looked_up_as": "interface", "attribute": "dstintf" }
+  ],
+  "policies": [
+    { "id": 1, "name": "policy-1", "enabled": true, "action": "accept", "referenced_as": ["to_interface"] }
+  ],
+  "safe_to_delete": false
 }
 ```
 
-Omitting the key rather than setting it false is deliberate. A `false` invites
-a reader to stop there and conclude *not safe*; an absent key forces it to
-consult the verdict and discover the answer was never available.
+The second row a scan would have found — it is the same policy that shows up in
+`policies` with its name and action attached. **The first it would not.**
+`ssot_test_vlan1` is a VLAN sub-interface parented to `wan1`, and no amount of
+policy, group, VIP, or route scanning reaches it. Deleting `wan1` would have
+taken the VLAN with it.
 
-#### Why the verdict is three-valued
+:::note[The two halves count differently]
+`total_references` counts authoritative **rows**, and one object can produce
+several. Asking about the address `all` on the same appliance returns
+`total_references: 2` — both rows are policy 1, once as `srcaddr` and once as
+`dstaddr` — while `policies` holds a single entry with
+`referenced_as: ["source", "destination"]`.
 
-A token scoped to firewall objects gets HTTP 403 on `router/static`, and the
-underlying client library turns every error status into an empty list — no
-exception, no status. A naive implementation therefore counts zero references
-and reports that a heavily-used object is safe to delete.
+Neither is wrong. The reference list counts places a reference appears; the
+detail list counts objects that hold one. Compare them and it looks like a
+discrepancy, so do not.
+:::
 
-Doing least privilege correctly makes that outcome *more* likely, not less,
-which is what makes it worth this much machinery. Each source is read with its
-status checked, and a table that could not be read can never support a claim
-that nothing references the object.
+#### The verdict
 
-`total_references` on an `indeterminate` verdict is a lower bound, not a count.
+Five values, and `safe_to_delete` is present for only two of them.
 
-#### What is not checked
+| `verdict` | Meaning | `safe_to_delete` |
+|---|---|---|
+| `referenced` | Something points at it | `false` |
+| `no_references` | The appliance confirmed nothing does | `true` |
+| `object_not_found` | No object of any kind carries this name, so probably a typo | absent |
+| `no_references_in_checked_scopes` | The authoritative lookup was unavailable and the partial scan found nothing | absent |
+| `indeterminate` | Something needed could not be read | absent |
 
-`checked_scopes` lists what was actually examined, and the list is not
-exhaustive even when every source answers. Proxy policies, local-in policies,
-SD-WAN rules, zones, IP pools, and DHCP server settings can all reference an
-object and are not consulted. **Group membership is not expanded
-transitively**, so an object inside a referenced group reports the group and
-not the policies that point at it.
+The two middle values are the ones worth slowing down for.
 
-[Before you delete](/guides/before-you-delete/) turns that into a workflow.
+**`object_not_found`** means the question was about a *name* rather than an
+object. Without it, a misspelling reports zero references and
+`safe_to_delete: true` — a confident yes to a question containing a typo.
 
-`referenced_as` names the field the object appeared in, so a policy that lists
-an object as both source and destination reports both rather than being counted
-twice.
+**`no_references_in_checked_scopes`** is a fact about four tables rather than
+about the appliance. The authoritative lookup was unavailable and the fallback
+scan found nothing, which is a much weaker claim than *nothing references this*.
+The `note` field says so in as many words.
+
+#### Response fields
+
+| Field | Always | Meaning |
+|---|---|---|
+| `verdict` | yes | The five values above. Read this, not the count |
+| `total_references` | yes | Authoritative row count when the lookup answered, otherwise the scan's count |
+| `resolved_as` | yes | Kinds the name matched, as a list: `address`, `interface`, `service`, and so on. Empty on `object_not_found` |
+| `references` | yes | Authoritative rows: `table`, `object`, `looked_up_as` (the kind), `attribute` (the field holding the reference) |
+| `sources_checked` | yes | Per-source status, including `object_usage` and the three kind-resolution reads |
+| `policies`, `groups`, `vips`, `routes` | yes | Readable detail from the direct scan |
+| `candidate_tables` | no | How many tables could reference this kind. Present only when the kind was identified |
+| `safe_to_delete` | no | Only on `referenced` and `no_references` |
+| `note` | no | Present on the other three verdicts, explaining the limit |
+
+`sources_checked` carries nine keys. Five are the detail scan — `policies`,
+`address_groups`, `service_groups`, `vips`, `routes`. Three are the reads that
+work out what kind of object the name is — `addresses`, `services`,
+`interfaces` — which has to happen before the usage lookup can be asked
+correctly. The last is `object_usage`, the authoritative lookup itself, and it
+is the one whose failure downgrades the verdict.
+
+`referenced_as` inside `policies` names the field the object appeared in, so a
+policy listing it as both source and destination reports both rather than being
+counted twice.
+
+**Group membership is not expanded transitively.** An object inside a group
+that a policy uses is reported as referenced by the group, not by the policy.
+
+#### Two FortiOS traps behind this
+
+Both silent, both the kind that produce a confident wrong answer.
+
+**Every row reports `reference_count: 0`**, including rows that are real
+references. Counting that field reports zero for an object with two of them.
+The row's *existence* is the signal; its count is not.
+
+**Asking the wrong table succeeds.** Query the address table about a name that
+is actually an interface, and FortiOS answers HTTP 200 with an empty list
+rather than an error. An interface with two references reports zero, and
+nothing anywhere indicates the question was malformed. That is why the tool
+resolves the object's kind from its defining cmdb table *before* querying, and
+why `resolved_as` is in the response at all.
 
 ## Network
 

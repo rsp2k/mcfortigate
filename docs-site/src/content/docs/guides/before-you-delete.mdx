@@ -1,6 +1,6 @@
 ---
 title: Checking before you delete something
-description: How to use find_references properly, and an honest list of what it does not check.
+description: How to use find_references properly, what its five verdicts mean, and where its answer still stops.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -10,9 +10,16 @@ breaks if I touch this. `find_references` answers it in one call.
 
 > Is the address object DMZ-SERVERS safe to delete?
 
-Behind that are five REST reads: policies on both the address and the service
-side, address group membership, service group membership, virtual IPs, and
-static routes. A reference in any one of them is a reason the answer is no.
+The answer comes from **the appliance's own reference lookup** — the same one
+the web UI's reference counter uses — rather than from guessing at a handful of
+tables. That matters more than it sounds: on FortiOS 7.0.14 there are 234
+tables that can hold a reference to an interface and 74 for a firewall address,
+so any hand-rolled scan is checking a rounding error's worth of them.
+
+Alongside the authoritative answer, the tool still reads policies, groups,
+virtual IPs, and static routes directly, because those carry readable detail
+the lookup does not — a policy's name, whether it is on, whether it accepts or
+denies.
 
 ## Read the verdict, not the count
 
@@ -20,8 +27,15 @@ static routes. A reference in any one of them is a reason the answer is no.
 {
   "object": "DMZ-SERVERS",
   "verdict": "referenced",
+  "resolved_as": ["address"],
   "total_references": 3,
+  "candidate_tables": 74,
+  "references": [
+    { "table": "firewall.policy", "object": "9", "attribute": "dstaddr" },
+    { "table": "firewall.addrgrp", "object": "ALL-SERVERS", "attribute": "member" }
+  ],
   "sources_checked": {
+    "object_usage": "ok",
     "policies": "ok", "address_groups": "ok", "service_groups": "ok",
     "vips": "ok", "routes": "ok"
   },
@@ -36,9 +50,15 @@ static routes. A reference in any one of them is a reason the answer is no.
 }
 ```
 
-`verdict` is `referenced`, `no_references`, or `indeterminate`, and it is the
-field to read. `safe_to_delete` is present only on the first two, because a
-source that could not be read cannot support a conclusion either way.
+`verdict` has five values and it is the field to read. `safe_to_delete` is
+present only on `referenced` and `no_references`, because a lookup that could
+not run cannot support a conclusion either way. The
+[other three](#the-three-answers-that-are-not-answers) are below.
+
+`references` is the authoritative half and `policies` / `groups` / `vips` /
+`routes` are the readable half, so the same reference can legitimately appear
+in both — once as a row naming the table and attribute, once with the policy's
+name and action attached.
 
 `referenced_as` names the field the object turned up in, so a policy listing it
 as both source and destination reports both rather than being counted twice.
@@ -55,78 +75,99 @@ the group, not the object. The tool does not follow the chain for you. When
 `groups` is non-empty, run `find_references` again on each group name, and
 check that the model actually did rather than assuming it would.
 
-## When the answer is `indeterminate`
+## The three answers that are not answers
 
-<Aside type="caution" title="The least-privileged token is the one that gets this">
-A token scoped to firewall objects gets HTTP 403 on `router/static`. Doing
-least privilege *correctly* makes an indeterminate answer more likely, not
-less, so this is a normal outcome rather than a sign something is broken.
-</Aside>
+`safe_to_delete` appears on `referenced` and `no_references` only. The other
+three verdicts omit it, because each one means the question was not actually
+settled — and omitting the key forces you to read the verdict, where a `false`
+would invite you to stop.
+
+### `object_not_found`
+
+No address, group, service, virtual IP, or interface carries that name.
+
+```json
+{
+  "object": "DMZ-SERVRES",
+  "verdict": "object_not_found",
+  "resolved_as": [],
+  "total_references": 0,
+  "note": "No address, group, service, virtual IP, or interface named 'DMZ-SERVRES' exists on this appliance, so this answer is about a name rather than an object. Check the spelling."
+}
+```
+
+Look closely at the object name. Without this verdict, a typo reports zero
+references and `safe_to_delete: true` — a confident yes to a question nobody
+actually asked. This is the cheapest possible bug to hit and one of the more
+expensive ones to act on.
+
+### `no_references_in_checked_scopes`
+
+The appliance's own lookup was unavailable, the fallback scan of four tables
+ran, and it found nothing.
 
 ```json
 {
   "object": "DMZ-SERVERS",
-  "verdict": "indeterminate",
-  "total_references": 1,
-  "sources_checked": {
-    "policies": "ok", "address_groups": "ok", "service_groups": "ok",
-    "vips": "ok", "routes": "denied: http=403"
-  },
-  "note": "Could not read: routes. The reference count is a lower bound and no conclusion about deletion safety is possible."
+  "verdict": "no_references_in_checked_scopes",
+  "total_references": 0,
+  "sources_checked": { "object_usage": "denied: http=403", "policies": "ok" },
+  "note": "The appliance's own reference lookup was unavailable, so this covers only policies, groups, virtual IPs, and static routes. FortiOS reports many more tables that can hold a reference, and they were not consulted."
 }
 ```
 
-No `safe_to_delete` key at all. That omission is deliberate — a `false` would
-invite you to read it as *not safe and here is why*, when the truth is that the
-question was never answered.
+This is a fact about four tables, not about the firewall. Of the 74 tables that
+can reference an address, four came back clean. Treating that as *nothing
+references this* is how an object in a web-proxy profile gets deleted.
 
-`total_references` here is a **lower bound**. One reference was found and an
-unknown number were not looked at.
+### `indeterminate`
 
-Two ways forward: grant the profile read on the group that failed and ask
-again, or check that source by hand. What you cannot do is treat a count of one
-as a count of one.
+Something the tool needed could not be read at all.
 
-Without this distinction the failure is silent and severe: an empty list from a
-refused read looks exactly like an empty list from a clean table, and the tool
-would confidently report a heavily-used object as safe to delete. [How the
+<Aside type="caution" title="The least-privileged token is the one that gets these">
+A token scoped to firewall objects gets HTTP 403 on `router/static`. Doing
+least privilege *correctly* makes an incomplete answer more likely, not less,
+so these verdicts are a normal outcome rather than a sign something is broken.
+</Aside>
+
+`total_references` here is a **lower bound**: some references were found and an
+unknown number were never looked at.
+
+Two ways forward, either grant the profile read on the source that failed and
+ask again, or check that source by hand. What you cannot do is treat a lower
+bound as a count.
+
+Without these distinctions the failure is silent and severe: an empty list from
+a refused read looks exactly like an empty list from a clean table. [How the
 denial case is handled throughout](/explanation/config-vs-live/#fail-soft-on-absence-never-on-denial).
 
 ## What `safe_to_delete: true` actually means
 
-It means **nothing in the five places this tool checks points at the object,
-and all five were readable**.
+It means **the appliance's own reference lookup answered, and said nothing
+points at this object**. That is a far stronger claim than it used to be, and
+it is worth knowing exactly how strong.
 
-It does not mean deleting it is a good idea. Two different claims, and the gap
-between them is where the interesting failures live.
+It still does not mean deleting it is a good idea.
 
-<Aside type="caution" title="Not checked by this tool">
-`find_references` covers regular firewall policies, address and service groups,
-virtual IPs, and static routes. A FortiGate has more places to hide a
-reference than that. Not checked:
+<Aside type="tip" title="What the authoritative lookup does and does not cover">
+The lookup knows every table FortiOS tracks references in — `candidate_tables`
+in the response says how many that is for your object's kind. So the old list
+of *places this tool forgets to look* is largely gone: proxy policies, SD-WAN
+rules, IP pools, security profiles and the rest are the appliance's problem to
+know about, and it does.
 
-- **Proxy policies**, **local-in policies**, **DoS policies**, and **multicast
-  policies**, each of which is a separate table
-- **Traffic shaping policies** and shaping profiles
-- **SD-WAN rules**, zones, and members
-- **Central SNAT** entries and **IP pools**
-- **VIP groups**, as opposed to the VIPs themselves
-- **IPsec phase-1 and phase-2** selectors
-- **Authentication and captive-portal rules**
-- **Security profiles** that can reference addresses, such as DNS filter
-  allowlists
-- **Other VDOMs** — every call is scoped to the configured VDOM only
-- **IPv6 policy tables** on firmware that keeps them separate
+Two real limits remain:
 
-The response carries `checked_scopes` naming what it *did* examine, which is
-the honest half of this. If your appliance uses any of the above heavily, treat
-`safe_to_delete: true` as *probably, and worth one more look* rather than as a
-verdict.
+- **Group membership is not expanded transitively.** An object inside a
+  referenced group is reported as referenced by the group, not by the policies
+  that use the group.
+- **Other VDOMs are not consulted.** Every call is scoped to the configured
+  VDOM only.
 </Aside>
 
-The honest framing: this tool eliminates the five checks that catch most
-references and that nobody enjoys doing by hand. It does not replace knowing
-your own configuration.
+The honest framing: this tool now answers *what does this appliance say points
+at this object*, which is the right question and the one the web UI answers
+too. It does not replace knowing your own configuration.
 
 ## The wider gap
 
@@ -146,14 +187,15 @@ is not the whole system.
 Ask in this order, and the answer at each step tells you whether the next one
 matters.
 
-**Start with the object itself.** `find_references` on the name. Check the
-verdict first: an `indeterminate` result means the rest of this workflow is
-premature, because you do not yet know what you are looking at. If it comes
-back `referenced`, you have your answer and the list of what to fix first.
+**Start with the object itself.** `find_references` on the name, and read the
+verdict before anything else. `object_not_found` means fix the spelling and
+start over. `indeterminate` or `no_references_in_checked_scopes` mean the rest
+of this workflow is premature, because you do not yet know what you are looking
+at. `referenced` gives you both the answer and the list of what to fix first.
 
 **Follow the groups.** Every name under `groups` gets its own
-`find_references` call. This is where indirect dependencies live, and it is the
-step most often skipped.
+`find_references` call, because membership is not expanded transitively. This
+is where indirect dependencies live, and it is the step most often skipped.
 
 **Check what else shares the value.** `search_config` on the object's IP or
 subnet finds *other objects covering the same addresses*, which is the common

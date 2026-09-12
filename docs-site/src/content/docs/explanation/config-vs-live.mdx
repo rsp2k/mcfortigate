@@ -103,9 +103,16 @@ to an empty list and the tool counts zero references and reports the object as
 safe to delete. The least-privileged token — the one you were right to
 create — is the one most likely to produce the dangerous answer.
 
-So it reports a three-valued `verdict`, names every source it could not read,
-and omits `safe_to_delete` entirely rather than claiming a conclusion it cannot
-support. [The full shape](/reference/tools/#find_references).
+So it reports a five-valued `verdict`, names every source it could not read in
+`sources_checked`, and omits `safe_to_delete` entirely on the three verdicts
+that did not earn it rather than claiming a conclusion it cannot support.
+
+Two of those verdicts exist purely to keep this class of failure visible.
+`indeterminate` means a source could not be read at all.
+`no_references_in_checked_scopes` is subtler and worth knowing: the appliance's
+own reference lookup was unavailable, a partial scan of four tables ran, and it
+found nothing — which is a fact about four tables rather than about the
+firewall. [The full shape](/reference/tools/#find_references).
 
 ## The one tool that spans both
 

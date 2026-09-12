@@ -101,6 +101,7 @@ Every call shows up in the FortiGate's own API audit log as a `GET` from the
 API admin, with the source address you restricted it to. The
 [tool-to-endpoint map](/reference/fortios-endpoints/) is what turns those log
 lines back into the questions that produced them — a single
-`find_references` call appears as five reads in the space of a second, and
+`find_references` call appears as a usage lookup plus five cmdb reads in the
+space of a second, and
 recognizing that pattern is the difference between an audit review that makes
 sense and one that looks like scraping.
