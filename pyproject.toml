@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcfortigate"
-version = "2026.9.12"
+version = "2026.9.12.1"
 description = "MCP server for FortiGate / FortiOS — question-shaped tools for firewall, network, and live-client diagnostics."
 readme = "README.md"
 requires-python = ">=3.10,<3.14"

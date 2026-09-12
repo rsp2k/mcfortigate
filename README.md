@@ -82,14 +82,27 @@ you do not yet know which kind of object holds the answer.
 uvx mcfortigate
 ```
 
-Add it to Claude Code:
+Add it to Claude Code. Read the token rather than typing it on the command
+line, so it does not land in your shell history:
 
 ```bash
+printf 'FortiGate API token: '; read -rs FORTIGATE_TOKEN; echo
+
 claude mcp add fortigate \
   --env FORTIGATE_HOST=fgt.example.com \
-  --env FORTIGATE_TOKEN=your-token \
+  --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \
   -- uvx mcfortigate
 ```
+
+History records the literal `"$FORTIGATE_TOKEN"`, because the line is recorded
+before the shell expands it.
+
+That is worth doing and it is not sufficient. Claude Code stores MCP
+environment values in `~/.claude.json` in plaintext, and nothing on this side
+changes that. **Treat the token as readable at rest** and put the real control
+on the appliance: a read-only profile, and a trusted-host list naming only the
+machine that runs this. Those hold even if the token leaks; keeping it out of
+`history` only means it leaks from one fewer place.
 
 ## Configuration
 
