@@ -128,6 +128,45 @@ remembering. A quarantine interface and an operator's VLAN are both
 `type: vlan` and are otherwise indistinguishable in the API. There is no flag
 that says *this one is mine*.
 
+## A negate flag reverses the rule beside it
+
+`srcaddr-negate`, `dstaddr-negate`, and `service-negate` each turn a policy's
+list from *these* into *everything except these*.
+
+```json
+{ "srcaddr": [{ "name": "PARTNER-NETS" }], "srcaddr-negate": "enable" }
+```
+
+Read the list and skip the flag, and you report a rule that permits partner
+networks. The rule permits **everything that is not** a partner network.
+
+This is the worst-behaved entry in this catalogue, and the reason is its
+distribution rather than its logic. The flag sits at `disable` on nearly every
+policy on nearly every appliance, so a summarizer that ignores it is correct
+thousands of times in a row and then confidently describes the exact inverse of
+the one rule that mattered. Nothing about that rule looks different.
+
+Carrying the flag is necessary but not sufficient, because a boolean beside a
+list is easy to skim past. The summary also writes a sentence into `match_note`
+saying which way round it is.
+
+## Internet Service replaces the destination rather than adding to it
+
+With `internet-service` enabled, FortiOS stops consulting `dstaddr` altogether
+and matches against its own Internet Service database instead.
+
+The `dstaddr` field is still populated. It is simply not used.
+
+So a rule tightly scoped to Office 365 reads, to anything summarizing
+`dstaddr`, as a rule reaching whatever that address list says — frequently
+`all`. The failure direction is *describing a narrow rule as a broad one*,
+which is the direction that gets a firewall change approved.
+
+Both of these are why `summarize_policy` carries an
+[`unsummarized` backstop](/reference/tools/#unsummarized): the general lesson
+is that a dropped field is safe only when dropping it provably preserves
+meaning, and neither of these does.
+
 ## `reference_count` is zero on real references
 
 The reference-usage endpoint returns a `currently_using` list, and every row in

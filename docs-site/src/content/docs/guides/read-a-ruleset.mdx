@@ -25,6 +25,45 @@ Ask the model to preserve it:
 > List the enabled policies in evaluation order and tell me if any rule is
 > shadowed by an earlier one.
 
+## Read `match_note` before you read anything else
+
+A policy summary can carry a `match_note`, and when it does, that sentence
+changes what the rest of the record means.
+
+```json
+{
+  "id": 7,
+  "action": "accept",
+  "source": ["PARTNER-NETS"],
+  "source_negated": true,
+  "match_note": "This rule matches every source EXCEPT the ones listed in 'source'."
+}
+```
+
+Read that policy without the note and you would report it as permitting partner
+networks. It permits everything that is *not* a partner network — a rule of
+almost exactly opposite scope, and considerably broader than it looks.
+
+The same applies to `destination_internet_service`. When it is present, the
+appliance ignores the `destination` list entirely and matches its Internet
+Service database instead, so a rule reading `"destination": ["all"]` may in
+fact be scoped to Office 365 and nothing else.
+
+<Aside type="caution" title="Ask the model to quote it">
+Neither field is common. Both sit at their default on nearly every policy, so a
+model can summarize a hundred rules correctly and then flatten the one that
+mattered.
+
+When a ruleset review matters, ask for `match_note` to be reproduced verbatim
+for any policy that has one, rather than paraphrased into the summary. A
+paraphrase is where the inversion gets lost.
+</Aside>
+
+Three more fields narrow a rule below what its address lists suggest, and are
+worth scanning for on anything you are about to call broad: `identity_groups`,
+`identity_users`, and `identity_fsso_groups`. A rule restricted to one AD group
+is not the rule its `source` list describes.
+
 ## Narrowing before you read
 
 A production ruleset does not fit comfortably in a conversation, and pulling

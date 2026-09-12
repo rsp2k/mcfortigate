@@ -17,6 +17,83 @@ Responses name both the appliance and the VDOM they were read from, since every
 call is scoped to a single VDOM and an answer about the wrong one is otherwise
 indistinguishable from an answer about yours.
 
+## Paging
+
+Twelve of the seventeen tools bound their results. Five do not, and the split
+is a rule rather than a list worth memorizing:
+
+**Listing tools page**, because they answer *what is there* and a page is a
+smaller true answer.
+
+**Analysis tools do not page.** `find_references`, `search_config`,
+`find_device`, `get_system_status`, and `list_targets` scan in order to reach a
+verdict, and a verdict from a partial scan is not a shorter answer — it is a
+wrong one. Those report what they scanned instead.
+
+| Argument | Type | Default | Meaning |
+|---|---|---|---|
+| `limit` | integer | `200` | Rows in this page, capped at `1000` |
+| `offset` | integer | `0` | Rows to skip before the page starts |
+
+Every bounded response carries `count`, the rows in this page, and
+`total_available`, the rows matching your filters. A page with more behind it
+adds three more fields:
+
+```json
+{
+  "count": 3,
+  "total_available": 22,
+  "truncated": true,
+  "next_offset": 4,
+  "paging_note": "showing rows 1 to 3 of 22. Call again with offset=4 for the rest, and do not treat this page as the whole table.",
+  "interfaces": ["…"]
+}
+```
+
+The `paging_note` is a sentence rather than a flag on purpose. A boolean beside
+a list is easy for a model to skim past; an instruction naming the next offset
+is not.
+
+### Why bound at all
+
+Not memory. A FortiGate with four thousand ARP entries produces a response
+Python handles without noticing.
+
+What breaks is further down the chain. An MCP client with a response size limit
+truncates the payload, the model reads whatever survived as though it were the
+whole answer, and **nothing in the data contradicts it**. *Which hosts are on
+this subnet* then gets answered confidently from the first eight hundred
+entries.
+
+Bounding the result here makes that same truncation visible. The response
+always knows how many rows exist, so a partial answer says it is partial.
+
+### Bad arguments are clamped, not rejected
+
+An out-of-range argument costs a row, not the task. Each correction is
+explained in `paging_note` rather than applied silently.
+
+| You pass | What happens |
+|---|---|
+| `offset` past the end | Empty window, `total_available` intact, note says the offset is past the end |
+| `offset` negative | Read as `0`, noted |
+| `limit` of `0` or less | Default of `200` used, noted |
+| `limit` above `1000` | Capped at `1000`, noted |
+
+Asking for `offset=5000` on the 22-interface lab box returns exactly that:
+
+```json
+{
+  "count": 0,
+  "total_available": 22,
+  "paging_note": "offset 5000 is past the end of 22 rows, so the window is empty",
+  "interfaces": []
+}
+```
+
+A model that guesses badly gets a usable correction and can try again. An error
+would end the task over an arithmetic mistake.
+
 ## Orientation
 
 ### `list_targets`
@@ -181,6 +258,7 @@ regardless of its type.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `name_contains` | string | none | Case-insensitive substring filter on the name |
 | `address_type` | string | none | Exact FortiOS type: `ipmask`, `fqdn`, `iprange`, `geography`, `mac` |
 
@@ -207,6 +285,7 @@ Groups and their members.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `name_contains` | string | none | Case-insensitive substring filter on the group name |
 
 ```json
@@ -226,6 +305,7 @@ Service objects with their protocols and ports.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `name_contains` | string | none | Case-insensitive substring filter on the service name |
 
 FortiOS scatters the port range across `tcp-portrange`, `udp-portrange`, and
@@ -258,6 +338,7 @@ Firewall rules in evaluation order, with filters.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `enabled_only` | boolean | `false` | Drop policies whose status is disabled |
 | `interface` | string | none | Exact match on source or destination interface |
 | `address` | string | none | Exact match on an address object or group, either side |
@@ -272,8 +353,22 @@ position is not something downstream is obliged to preserve — a filter, a
 re-serialization, or a model rewriting the answer into a table can all lose
 it — so the index travels with the record rather than being implied by it.
 
-`total_policies` reports the size of the unfiltered ruleset alongside `count`,
-so a filtered answer says what it was filtered *from*.
+:::caution[Three counts, three meanings]
+This tool returns all three, and they answer different questions:
+
+| Field | Counts |
+|---|---|
+| `count` | Rows **in this page** |
+| `total_available` | Rows **matching your filters** |
+| `total_policies` | Rows **in the whole ruleset** |
+
+`count: 20, total_available: 63, total_policies: 412` means: you are looking at
+twenty of the sixty-three policies that matched, out of four hundred and twelve
+on the appliance.
+
+Read the wrong one and you get a plausible sentence that is badly wrong —
+*there are twenty policies on this firewall* when there are four hundred.
+:::
 
 ```json
 {
@@ -312,6 +407,63 @@ so a filtered answer says what it was filtered *from*.
 }
 ```
 
+#### Fields that invert a rule
+
+Two classes of FortiOS field do not shorten a policy's meaning, they **reverse**
+it. Both sit at their default on nearly every policy, which is exactly what
+makes them dangerous to omit — you can read a thousand summaries without
+meeting one.
+
+**Negation.** With `srcaddr-negate` enabled, the policy matches every source
+*except* those listed. A summary that prints the list without the flag states
+the precise opposite of the rule. These surface as `source_negated`,
+`destination_negated`, and `service_negated`.
+
+**Internet Service.** With `internet-service` enabled, FortiOS ignores
+`dstaddr` entirely and matches against its Internet Service database instead.
+A rule scoped to Office 365 would otherwise be described as reaching
+everything. This surfaces as `destination_internet_service`, with
+`source_internet_service` for the source-side equivalent, and a `_negated`
+companion for each.
+
+Both also write plain prose into `match_note`:
+
+```json
+{
+  "id": 7,
+  "name": "block-all-but-partners",
+  "action": "accept",
+  "source": ["PARTNER-NETS"],
+  "source_negated": true,
+  "destination_internet_service": ["Microsoft-Office365"],
+  "match_note": "This rule matches every source EXCEPT the ones listed in 'source'. Destination matching uses the Internet Service database, so the 'destination' address list is ignored by the appliance."
+}
+```
+
+A boolean sitting beside a list is easy to skim past. A sentence saying *this
+rule matches every source EXCEPT the ones listed* is not, which is the entire
+reason the field exists.
+
+Three more fields narrow a rule below what its address lists suggest:
+`source_v6` and `destination_v6` carry the IPv6 members, and
+`identity_groups`, `identity_users`, and `identity_fsso_groups` carry the
+identity scope. A policy restricted to one AD group is not the policy its
+address lists describe.
+
+#### `unsummarized`
+
+Any non-default policy key the code neither reads nor explicitly ignores lands
+here verbatim.
+
+It is the backstop for whatever a future firmware adds. The summarizing
+approach [buys a lot](/explanation/question-shaped-tools/), and its one real
+risk is that a field added next year silently changes what a rule means while
+the summary keeps looking correct. This field means that shows up as data
+rather than as nothing.
+
+Empty on the lab appliance's real policy, and verified to fire when an unknown
+field is injected.
+
 An unnamed policy reports as `policy-<id>`, which is what a FortiGate with one
 default rule looks like: `{"id": 1, "name": "policy-1", "order": 0}`.
 
@@ -337,6 +489,7 @@ Virtual IPs, which are FortiOS's destination NAT rules.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 
 A VIP maps an external address, optionally with a port, to an internal one.
 FortiOS stores the addresses inline on the VIP rather than as references to
@@ -525,6 +678,7 @@ Interfaces with addresses, VLAN tags, and link state.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `include_internal` | boolean | `false` | Include FortiOS-generated interfaces |
 | `interface_type` | string | none | Exact type: `physical`, `vlan`, `aggregate`, `hard-switch`, `switch`, `vap-switch`, `tunnel` |
 | `with_ip_only` | boolean | `false` | Keep only interfaces carrying a static IP |
@@ -617,6 +771,7 @@ VLAN sub-interfaces with their tags and parents, sorted by tag.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 
 A focused view of the VLAN subset of the interface table, because *what VLANs
 exist and what are they attached to* gets asked far more often than the full
@@ -631,6 +786,7 @@ Routes an operator configured, sorted by sequence number.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 
 ```json
 {
@@ -660,6 +816,7 @@ Routes the appliance is forwarding on right now.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `protocol` | string | none | Filter by route type: `static`, `connect`, `dhcp` |
 
 This is live state, so it includes connected routes, dynamically learned
@@ -693,6 +850,7 @@ Wireless clients currently associated, enriched with DHCP and ARP.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `ssid` | string | none | Keep only clients on this SSID |
 
 Each client is joined against the DHCP lease table and the ARP table by MAC,
@@ -734,6 +892,7 @@ Leases the appliance is currently handing out.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `interface` | string | none | Keep only leases issued on this interface |
 | `hostname_contains` | string | none | Case-insensitive substring filter on the hostname |
 
@@ -761,6 +920,7 @@ IP-to-MAC bindings the appliance can see.
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `target` | string | only appliance | Which FortiGate to query |
+| `limit`, `offset` | integer | `200`, `0` | One page of rows — [see paging](#paging) |
 | `interface` | string | none | Keep only entries learned on this interface |
 
 ARP catches devices that DHCP does not, meaning anything with a statically

@@ -5,7 +5,12 @@ description: Field-by-field definitions of the summarized objects every tool ret
 
 Every tool returns a JSON object with `target` naming the appliance that
 answered, `vdom` naming the VDOM it was scoped to, `count` where a list is
-involved, and one named collection. The
+involved, and one named collection.
+
+Listing tools add the paging envelope — `total_available` always, plus
+`truncated`, `next_offset`, and `paging_note` when there is more behind the
+page. `count` is the rows you were given; `total_available` is the rows that
+matched. [The full contract](/reference/tools/#paging). The
 objects inside those collections are summaries rather than raw FortiOS
 records — a raw policy carries eighty-plus fields, most of them empty strings,
 unused IPv6 arrays, and internal UUIDs, and
@@ -73,6 +78,18 @@ From `list_policies` and the `policies` section of `search_config`.
 | `schedule` | no | Present only when it is not `always` |
 | `log` | no | Present only when logging is not disabled |
 | `comment` | no | From FortiOS's `comments`, present only when set |
+| `source_negated`, `destination_negated`, `service_negated` | no | Present and `true` when the list means *everything except* |
+| `destination_internet_service`, `source_internet_service` | no | Internet Service names, which **replace** the address match |
+| `destination_internet_service_negated`, `source_internet_service_negated` | no | Present and `true` when that match is inverted |
+| `source_v6`, `destination_v6` | no | IPv6 members, when set |
+| `identity_groups`, `identity_users`, `identity_fsso_groups` | no | Identity scope narrowing the rule |
+| `match_note` | no | Prose describing any of the above that applies |
+| `unsummarized` | no | Non-default keys the summarizer neither read nor ignored |
+
+The fields from `source_negated` down are the ones that change what the rule
+*means* rather than adding detail to it. `match_note` restates them in prose
+precisely because a flag beside a list is easy to miss — see
+[fields that invert a rule](/reference/tools/#fields-that-invert-a-rule).
 
 The five list fields are always lists even when FortiOS returned a bare string,
 which it does for some relational fields on 7.0.x. A policy is
