@@ -534,3 +534,73 @@ class TestDegradedReadsOnRealShapes:
         assert result["matches"]["addresses"][0]["name"] == "lan"
         assert "403" in result["sources_checked"]["interfaces"]
         assert "incomplete" in result["warning"]
+
+
+class TestContainerExpansionAgainstRealShapes:
+    """The transitive walk, driven by the chain this appliance actually has.
+
+    These exist because the rest of this file passed without them. Every other
+    captured object turns out to have no expandable container: `wan1` is
+    referenced by a VLAN naming it as a parent, which is deliberately not
+    treated as a container, and by a policy, which is not one either. So the
+    walk queried nothing, raised nothing, and its tests went green without
+    exercising a single line of it.
+
+    The chain below is real and three levels deep:
+
+        internal1 -> system.virtual-switch:internal
+                  -> system.interface:lan
+                  -> firewall.policy:1
+
+    It is the case that justifies expansion existing. Asking the appliance
+    about `internal1` directly returns exactly one row, the switch, and says
+    nothing about the policy that a change to that port would disturb.
+    """
+
+    def test_the_walk_reaches_a_policy_three_levels_down(self, hardware_tool):
+        """The whole point: a policy no direct lookup mentions."""
+        result = hardware_tool("find_references", {"object_name": "internal1"})
+        reached = {row["table"] for row in result["transitive_references"]}
+        assert "firewall.policy" in reached, (
+            "the policy reachable through internal -> lan was not found, which means "
+            "the walk stopped early while still reporting success"
+        )
+
+    def test_the_switch_is_queried_as_an_interface_not_a_virtual_switch(self, hardware_tool):
+        """The trap that ends the walk at depth one while looking complete.
+
+        `q_name=virtual-switch` for `internal` answers 200 with an empty list on
+        real hardware. Only `q_name=interface` returns the membership that
+        continues the chain, so deriving the next query from the referencing
+        table's own name silently truncates the walk. The captured fixture
+        preserves that asymmetry, and the harness raises on an unrouted query,
+        so this test fails loudly if the derivation regresses.
+        """
+        result = hardware_tool("find_references", {"object_name": "internal1"})
+        assert result["expansion"]["deepest_depth"] >= 2
+
+    def test_the_via_chain_names_both_hops(self, hardware_tool):
+        """A reached reference is useless without the path that reached it."""
+        result = hardware_tool("find_references", {"object_name": "internal1"})
+        policy_rows = [row for row in result["transitive_references"] if row["table"] == "firewall.policy"]
+        assert policy_rows, "no policy row to inspect"
+        assert policy_rows[0]["via"] == ["internal", "lan"]
+
+    def test_direct_and_transitive_stay_separate(self, hardware_tool):
+        """A reached reference must never be presented as a direct one."""
+        result = hardware_tool("find_references", {"object_name": "internal1"})
+        assert [row["table"] for row in result["references"]] == ["system.virtual-switch"]
+        assert all(row["depth"] == 0 for row in result["references"])
+        assert all(row["depth"] >= 1 for row in result["transitive_references"])
+
+    def test_an_unused_group_expands_to_nothing_without_erroring(self, hardware_tool):
+        """`gmail.com` sits in `G Suite`, and `G Suite` is used by nothing.
+
+        The walk must open the group and find it empty, which is a different
+        outcome from never opening it. The harness raises on an uncaptured
+        query, so this passing at all proves the container was opened.
+        """
+        result = hardware_tool("find_references", {"object_name": "gmail.com"})
+        assert result["verdict"] == "referenced"
+        assert result["transitive_references"] == []
+        assert result["expansion"]["status"] == "complete"

@@ -169,6 +169,22 @@ USAGE_PROBES: tuple[tuple[str, str, str, str], ...] = (
     ("address_table_asked_about_an_interface", "firewall", "address", "wan1"),
     # The same key asked of the table it really lives in.
     ("interface_wan1", "system", "interface", "wan1"),
+    # The container chain, which is what `find_references` walks past the direct
+    # referrer. Without these the expansion path has no fixture behind it: the
+    # objects above happen to have no expandable container, so the walk queries
+    # nothing and its tests pass without exercising it.
+    #
+    # `internal1` is a switch port and gives the real three-level chain this
+    # appliance has: internal1 -> virtual-switch:internal -> interface:lan ->
+    # policy:1. Note `internal` must be asked as an *interface*; asked as a
+    # virtual-switch it answers 200 and an empty list, which would end the walk
+    # at depth one while still reporting success.
+    ("interface_internal_switch_member", "system", "interface", "internal1"),
+    ("interface_internal_as_interface", "system", "interface", "internal"),
+    ("interface_lan_container", "system", "interface", "lan"),
+    # The group that `gmail.com` sits in, so the address-side walk has a
+    # container to open rather than only a membership row to report.
+    ("addrgrp_g_suite_container", "firewall", "addrgrp", "G Suite"),
 )
 
 #: The absent-object probe is issued against every kind, because with no kind
@@ -249,6 +265,21 @@ REVISION_PLACEHOLDER = "0" * 32
 #: rebased onto so a re-capture does not churn the file.
 HISTORY_SAMPLES = 3
 HISTORY_ORIGIN_MS = 1_700_000_000_000
+
+#: Current readings pinned to fixed values, because their captured value is
+#: whatever the appliance happened to be doing that second.
+#:
+#: `cpu` is pinned to zero deliberately. A test asserts that a zero reading
+#: survives `get_system_status`, guarding the difference between filtering the
+#: optional fields on `is not None` and on truthiness — the latter drops a
+#: genuine zero as though the appliance never answered. That guard needs a zero
+#: to guard. The first capture got one by luck, because the lab was idle; a
+#: re-capture during this session's own load got 3, which would have left the
+#: test passing while protecting nothing, since a truthy 3 cannot detect a
+#: truthiness bug. Pinning it makes the subject permanent rather than lucky.
+#:
+#: The others are pinned only so a re-capture produces an identical file.
+PINNED_CURRENT = {"cpu": 0, "mem": 37, "session": 16, "setuprate": 0, "disk": 3}
 
 _IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 _MAC = re.compile(r"(?<![0-9A-Fa-f])[0-9A-Fa-f]{2}([:-])(?:[0-9A-Fa-f]{2}\1){4}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])")
@@ -499,13 +530,18 @@ def shrink_resource_history(payload: Any) -> Any:
     every capture. Three samples per period preserve that a period holds a list
     of `[timestamp, value]` pairs, and rebasing onto a fixed origin keeps the
     relative spacing while making a re-capture produce an identical file.
+
+    The `current` readings named in `PINNED_CURRENT` are also fixed. See that
+    constant for why `cpu` in particular must stay zero.
     """
     results = payload.get("results")
     if not isinstance(results, dict):
         return payload
-    for series in results.values():
+    for metric, series in results.items():
         if not isinstance(series, list):
             continue
+        if metric in PINNED_CURRENT and series and isinstance(series[0], dict):
+            series[0]["current"] = PINNED_CURRENT[metric]
         for sample in series:
             history = sample.get("historical") if isinstance(sample, dict) else None
             if not isinstance(history, dict):

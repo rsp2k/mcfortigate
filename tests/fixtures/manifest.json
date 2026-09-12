@@ -92,6 +92,38 @@
     "mkey": "wan1"
    }
   },
+  "monitor_system_object_usage__interface_internal_switch_member": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "system",
+    "q_name": "interface",
+    "mkey": "internal1"
+   }
+  },
+  "monitor_system_object_usage__interface_internal_as_interface": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "system",
+    "q_name": "interface",
+    "mkey": "internal"
+   }
+  },
+  "monitor_system_object_usage__interface_lan_container": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "system",
+    "q_name": "interface",
+    "mkey": "lan"
+   }
+  },
+  "monitor_system_object_usage__addrgrp_g_suite_container": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "addrgrp",
+    "mkey": "G Suite"
+   }
+  },
   "monitor_system_object_usage__absent_addresses": {
    "endpoint": "api/v2/monitor/system/object/usage",
    "query": {
