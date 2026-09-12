@@ -138,7 +138,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         Looks through address objects and groups, services, interfaces, static
         routes, and optionally policies, matching names, values, comments, and
         member lists. This is the tool for an open question such as "where does
-        10.20.30.0/24 appear" or "what mentions guest", when you do not yet know
+        203.0.113.0/24 appear" or "what mentions guest", when you do not yet know
         which kind of object holds the answer.
 
         Check `sources_checked` before concluding from a zero result. A source

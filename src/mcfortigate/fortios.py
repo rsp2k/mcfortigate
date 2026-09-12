@@ -173,8 +173,8 @@ def subnet_to_cidr(subnet: str) -> str | None:
     This is the right conversion for ``firewall.address`` records, where the
     value genuinely is a network.
 
-    >>> subnet_to_cidr("10.0.0.0 255.255.255.0")
-    '10.0.0.0/24'
+    >>> subnet_to_cidr("203.0.113.0 255.255.255.0")
+    '203.0.113.0/24'
     >>> subnet_to_cidr("0.0.0.0 0.0.0.0")
     '0.0.0.0/0'
     >>> subnet_to_cidr("nonsense")
@@ -739,7 +739,7 @@ _MAC_WHOLE = re.compile(
 
 #: A whole MAC or a leading, trailing, or middle run of one, as an operator
 #: would paste it. The group sizes are what keeps an IPv4 address out: dotted
-#: groups must be four hex digits, so `192.168.1.47` cannot qualify, while
+#: groups must be four hex digits, so `198.51.100.47` cannot qualify, while
 #: colon and dash groups must be one or two, so `fe80::1` cannot either.
 _MAC_PART = re.compile(
     r"^(?:[0-9a-f]{1,2}(?:[:-][0-9a-f]{1,2})+|[0-9a-f]{4}(?:\.[0-9a-f]{4})+|[0-9a-f]{12})$"
@@ -792,14 +792,14 @@ def mac_fragment_digits(value: str) -> str | None:
 
     Returning None for anything that is not MAC-shaped is the load-bearing part.
     An IPv4 address is made entirely of hex digits and dots, so a looser test
-    would let a query for `192.168.1.47` match an unrelated device by its MAC,
+    would let a query for `198.51.100.47` match an unrelated device by its MAC,
     which is a confidently wrong answer rather than a missing one.
 
     >>> mac_fragment_digits("20-47-47-7D-DB-7B")
     '2047477ddb7b'
     >>> mac_fragment_digits("7d:db:7b")
     '7ddb7b'
-    >>> mac_fragment_digits("192.168.1.47")
+    >>> mac_fragment_digits("198.51.100.47")
     """
     text = (value or "").strip().lower()
     if not _MAC_PART.match(text):

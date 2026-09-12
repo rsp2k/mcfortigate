@@ -286,7 +286,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         into one record. A device seen in several places produces one result
         rather than three partial ones.
 
-        This is the tool for questions like "what is 192.168.1.47", "is that
+        This is the tool for questions like "what is 198.51.100.47", "is that
         laptop on the network", or "which SSID is this MAC on".
 
         A MAC query matches whatever punctuation the appliance used, so
