@@ -83,9 +83,7 @@ class TestLoadTargets:
 
     def test_verify_ssl_accepts_the_usual_spellings(self):
         for raw, expected in (("false", False), ("FALSE", False), ("0", False), ("no", False), ("true", True)):
-            targets = load_targets(
-                {"FORTIGATE_HOST": "fgt", "FORTIGATE_TOKEN": "abc", "FORTIGATE_VERIFY_SSL": raw}
-            )
+            targets = load_targets({"FORTIGATE_HOST": "fgt", "FORTIGATE_TOKEN": "abc", "FORTIGATE_VERIFY_SSL": raw})
             assert targets["fgt"].verify_ssl is expected
 
     def test_verify_ssl_defaults_to_on(self):

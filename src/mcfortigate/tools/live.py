@@ -2,8 +2,12 @@
 
 Everything here reads the FortiOS monitor tree, which reports what the
 appliance currently observes rather than what it was configured to do. None of
-it is persisted anywhere, so these answers are true only at the moment of the
-call.
+it is persisted, so these answers are true only at the moment of the call.
+
+Each tool reports the status of every source it consulted. A FortiGate with no
+radio has no wireless client list at all, and joining around that absence is
+correct. A FortiGate that refused the read is a different situation entirely,
+and one that must never be presented as an empty network.
 """
 
 from __future__ import annotations
@@ -12,37 +16,54 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from mcfortigate.client import connect, fetch_monitor
+from mcfortigate.annotations import read_only
+from mcfortigate.client import (
+    MON_ARP,
+    MON_DHCP_LEASES,
+    MON_WIFI_CLIENTS,
+    MonitorResult,
+    connect,
+    fetch_monitor,
+)
 from mcfortigate.config import TargetRegistry
 from mcfortigate.fortios import normalize_mac
 
 
-def _index_by_mac(entries: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Key a monitor result list by normalized MAC.
-
-    FortiOS is inconsistent about MAC casing across the wifi, DHCP, and ARP
-    endpoints, so every join between them has to normalize first or it silently
-    matches nothing.
-    """
+def _index_by_mac(result: MonitorResult) -> dict[str, dict[str, Any]]:
+    """Key monitor rows by normalized MAC for joining."""
     indexed: dict[str, dict[str, Any]] = {}
-    for entry in entries:
+    for entry in result.rows:
         mac = normalize_mac(entry.get("mac", ""))
         if mac:
             indexed[mac] = entry
     return indexed
 
 
+def _source_report(sources: dict[str, MonitorResult]) -> dict[str, str]:
+    """Summarize each consulted source for inclusion in a response."""
+    return {name: result.describe() for name, result in sources.items()}
+
+
+def _unusable(sources: dict[str, MonitorResult]) -> list[str]:
+    """Names of sources whose emptiness cannot be trusted."""
+    return [name for name, result in sources.items() if not result.usable]
+
+
 def register(mcp: FastMCP, registry: TargetRegistry) -> None:
     """Attach the live-state tools to the server."""
 
-    @mcp.tool
+    @mcp.tool(annotations=read_only("List connected wireless clients"))
     def list_wifi_clients(target: str | None = None, ssid: str | None = None) -> dict[str, Any]:
         """List wireless clients currently associated, enriched with DHCP and ARP.
 
-        Each client is joined against the DHCP lease table and the ARP table by
-        MAC address, which is what turns an anonymous MAC into a recognizable
-        device. The hostname comes from the DHCP lease, falling back to the
-        vendor class identifier when the client did not send one.
+        Each client is joined against the DHCP lease and ARP tables by MAC, which
+        is what turns an anonymous MAC into a recognizable device. The hostname
+        comes from the DHCP lease, falling back to the vendor class identifier
+        when the client sent no name.
+
+        `authenticated` is true or false only when the appliance said so, and
+        absent when it did not, because inferring "not authenticated" from a
+        missing field would fabricate a security-relevant claim.
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
@@ -51,34 +72,54 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         """
         fgt = registry.resolve(target)
         with connect(fgt) as api:
-            clients = fetch_monitor(api, "api/v2/monitor/wifi/client")
-            leases = _index_by_mac(fetch_monitor(api, "api/v2/monitor/system/dhcp"))
-            arp = _index_by_mac(fetch_monitor(api, "api/v2/monitor/network/arp"))
+            sources = {
+                "wifi": fetch_monitor(api, MON_WIFI_CLIENTS),
+                "dhcp": fetch_monitor(api, MON_DHCP_LEASES),
+                "arp": fetch_monitor(api, MON_ARP),
+            }
+        leases = _index_by_mac(sources["dhcp"])
+        arp = _index_by_mac(sources["arp"])
 
         results: list[dict[str, Any]] = []
-        for client in clients:
+        for client in sources["wifi"].rows:
             if ssid and client.get("ssid") != ssid:
                 continue
             mac = normalize_mac(client.get("mac", ""))
             lease = leases.get(mac, {})
             arp_entry = arp.get(mac, {})
             rate_bps = client.get("data_rate_bps") or 0
-            results.append(
-                {
-                    "mac": mac,
-                    "hostname": lease.get("hostname") or lease.get("vci") or None,
-                    "ip": client.get("ip") or lease.get("ip") or arp_entry.get("ip"),
-                    "ssid": client.get("ssid"),
-                    "signal_dbm": client.get("signal"),
-                    "data_rate_mbps": round(rate_bps / 1_000_000, 1) if rate_bps else None,
-                    "authenticated": client.get("authentication") == "pass",
-                    "interface": lease.get("interface") or arp_entry.get("interface"),
-                }
+            entry: dict[str, Any] = {
+                "mac": mac,
+                "hostname": lease.get("hostname") or lease.get("vci") or None,
+                "ip": client.get("ip") or lease.get("ip") or arp_entry.get("ip"),
+                "ssid": client.get("ssid"),
+                "signal_dbm": client.get("signal"),
+                "interface": lease.get("interface") or arp_entry.get("interface"),
+            }
+            try:
+                entry["data_rate_mbps"] = round(float(rate_bps) / 1_000_000, 1) if rate_bps else None
+            except (TypeError, ValueError):
+                entry["data_rate_mbps"] = None
+            auth = client.get("authentication")
+            if auth is not None:
+                entry["authenticated"] = auth == "pass"
+            results.append(entry)
+
+        response: dict[str, Any] = {
+            "target": fgt.name,
+            "count": len(results),
+            "clients": results,
+            "sources_checked": _source_report(sources),
+        }
+        blocked = _unusable(sources)
+        if blocked:
+            response["warning"] = (
+                f"Could not read: {', '.join(blocked)}. Results are incomplete and an empty "
+                "list is not evidence that nobody is connected."
             )
+        return response
 
-        return {"target": fgt.name, "count": len(results), "clients": results}
-
-    @mcp.tool
+    @mcp.tool(annotations=read_only("List DHCP leases"))
     def list_dhcp_leases(
         target: str | None = None,
         interface: str | None = None,
@@ -94,10 +135,10 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         """
         fgt = registry.resolve(target)
         with connect(fgt) as api:
-            leases = fetch_monitor(api, "api/v2/monitor/system/dhcp")
+            monitor = fetch_monitor(api, MON_DHCP_LEASES)
 
         results: list[dict[str, Any]] = []
-        for lease in leases:
+        for lease in monitor.rows:
             name = lease.get("hostname") or lease.get("vci") or ""
             if interface and lease.get("interface") != interface:
                 continue
@@ -114,15 +155,23 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 }
             )
 
-        return {"target": fgt.name, "count": len(results), "leases": results}
+        response: dict[str, Any] = {
+            "target": fgt.name,
+            "count": len(results),
+            "leases": results,
+            "source_status": monitor.describe(),
+        }
+        if not monitor.usable:
+            response["warning"] = f"The lease table could not be read ({monitor.describe()})."
+        return response
 
-    @mcp.tool
+    @mcp.tool(annotations=read_only("Show the ARP table"))
     def get_arp_table(target: str | None = None, interface: str | None = None) -> dict[str, Any]:
         """Show the ARP table, which is the IP-to-MAC bindings the appliance sees.
 
-        ARP catches devices that DHCP does not, meaning anything with a static
-        address, so it is the fallback when a device is present on the network
-        but holds no lease.
+        ARP catches devices DHCP does not, meaning anything with a static
+        address, so it is the fallback when a device is present but holds no
+        lease.
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
@@ -131,7 +180,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         """
         fgt = registry.resolve(target)
         with connect(fgt) as api:
-            entries = fetch_monitor(api, "api/v2/monitor/network/arp")
+            monitor = fetch_monitor(api, MON_ARP)
 
         results = [
             {
@@ -139,12 +188,20 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 "ip": entry.get("ip"),
                 "interface": entry.get("interface"),
             }
-            for entry in entries
+            for entry in monitor.rows
             if not interface or entry.get("interface") == interface
         ]
-        return {"target": fgt.name, "count": len(results), "entries": results}
+        response: dict[str, Any] = {
+            "target": fgt.name,
+            "count": len(results),
+            "entries": results,
+            "source_status": monitor.describe(),
+        }
+        if not monitor.usable:
+            response["warning"] = f"The ARP table could not be read ({monitor.describe()})."
+        return response
 
-    @mcp.tool
+    @mcp.tool(annotations=read_only("Identify a device by MAC, IP, or hostname"))
     def find_device(query: str, target: str | None = None) -> dict[str, Any]:
         """Identify a device on the network by MAC, IP, or hostname fragment.
 
@@ -153,7 +210,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         into one record. A device seen in several places produces one result
         rather than three partial ones.
 
-        This is the tool for questions like "what is 192.168.1.47", "is Kevin's
+        This is the tool for questions like "what is 192.168.1.47", "is that
         laptop on the network", or "which SSID is this MAC on".
 
         Args:
@@ -164,58 +221,76 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         """
         fgt = registry.resolve(target)
-        with connect(fgt) as api:
-            wifi = fetch_monitor(api, "api/v2/monitor/wifi/client")
-            leases = fetch_monitor(api, "api/v2/monitor/system/dhcp")
-            arp = fetch_monitor(api, "api/v2/monitor/network/arp")
-
         needle = query.strip().lower()
-        merged: dict[str, dict[str, Any]] = {}
+        if not needle:
+            return {
+                "target": fgt.name,
+                "query": query,
+                "count": 0,
+                "devices": [],
+                "error": "query was empty; give a MAC, an IP, or part of a hostname",
+            }
 
-        def touch(mac: str) -> dict[str, Any]:
-            return merged.setdefault(mac, {"mac": mac, "seen_in": []})
+        with connect(fgt) as api:
+            sources = {
+                "wifi": fetch_monitor(api, MON_WIFI_CLIENTS),
+                "dhcp": fetch_monitor(api, MON_DHCP_LEASES),
+                "arp": fetch_monitor(api, MON_ARP),
+            }
 
-        for entry in leases:
-            mac = normalize_mac(entry.get("mac", ""))
-            name = entry.get("hostname") or entry.get("vci") or ""
-            if not mac:
-                continue
-            if needle in mac or needle in (entry.get("ip") or "").lower() or needle in name.lower():
-                record = touch(mac)
-                record["seen_in"].append("dhcp")
-                record["ip"] = entry.get("ip")
-                record["hostname"] = name or None
-                record["interface"] = entry.get("interface")
-                record["lease_expires"] = entry.get("expire_time")
+        def name_of(row: dict[str, Any]) -> str:
+            return row.get("hostname") or row.get("vci") or ""
 
-        for entry in arp:
-            mac = normalize_mac(entry.get("mac", ""))
-            if not mac:
-                continue
-            if needle in mac or needle in (entry.get("ip") or "").lower() or mac in merged:
-                record = touch(mac)
-                if "arp" not in record["seen_in"]:
-                    record["seen_in"].append("arp")
-                record.setdefault("ip", entry.get("ip"))
-                record.setdefault("interface", entry.get("interface"))
+        def hit(row: dict[str, Any]) -> bool:
+            mac = normalize_mac(row.get("mac", ""))
+            return needle in mac or needle in (row.get("ip") or "").lower() or needle in name_of(row).lower()
 
-        for entry in wifi:
-            mac = normalize_mac(entry.get("mac", ""))
-            if not mac:
-                continue
-            if needle in mac or needle in (entry.get("ip") or "").lower() or mac in merged:
-                record = touch(mac)
-                if "wifi" not in record["seen_in"]:
-                    record["seen_in"].append("wifi")
-                record.setdefault("ip", entry.get("ip"))
-                record["ssid"] = entry.get("ssid")
-                record["signal_dbm"] = entry.get("signal")
-                record["wireless"] = True
+        # Two passes on purpose. Matching first, then enrichment, so a device
+        # found by its ARP-visible IP still collects its DHCP hostname. A single
+        # pass only ever enriched forward, and left later-matched devices bare.
+        matched: set[str] = set()
+        for result in sources.values():
+            for row in result.rows:
+                mac = normalize_mac(row.get("mac", ""))
+                if mac and hit(row):
+                    matched.add(mac)
+
+        merged: dict[str, dict[str, Any]] = {mac: {"mac": mac, "seen_in": []} for mac in matched}
+
+        for label, result in sources.items():
+            for row in result.rows:
+                mac = normalize_mac(row.get("mac", ""))
+                if mac not in merged:
+                    continue
+                record = merged[mac]
+                if label not in record["seen_in"]:
+                    record["seen_in"].append(label)
+                if row.get("ip") and not record.get("ip"):
+                    record["ip"] = row["ip"]
+                if row.get("interface") and not record.get("interface"):
+                    record["interface"] = row["interface"]
+                if label == "dhcp":
+                    if name_of(row):
+                        record["hostname"] = name_of(row)
+                    if row.get("expire_time"):
+                        record["lease_expires"] = row["expire_time"]
+                elif label == "wifi":
+                    record["wireless"] = True
+                    record["ssid"] = row.get("ssid")
+                    if row.get("signal") is not None:
+                        record["signal_dbm"] = row["signal"]
 
         results = sorted(merged.values(), key=lambda item: item.get("ip") or item["mac"])
-        return {
+        response: dict[str, Any] = {
             "target": fgt.name,
             "query": query,
             "count": len(results),
             "devices": results,
+            "sources_checked": _source_report(sources),
         }
+        blocked = _unusable(sources)
+        if blocked:
+            response["warning"] = (
+                f"Could not read: {', '.join(blocked)}. Not finding the device is not evidence that it is absent."
+            )
+        return response

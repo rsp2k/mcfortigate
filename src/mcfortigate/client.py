@@ -1,34 +1,146 @@
-"""FortiGate connection handling.
+"""FortiGate connection handling and status-checked reads.
 
-Sessions are opened per tool call rather than pooled. With token auth, which
-is the preferred mode, this costs nothing because the token travels on each
-request and there is no login round-trip to amortize. With username and
-password there is one login per call, which is an acceptable price for never
-holding a stale session across an idle MCP server that may sit unused for
-hours between questions.
+Two things here exist specifically to work around defects in `fortigate-api`
+2.0.8, and both are load-bearing.
+
+The first is that `Connector.get()` does `if not response.ok: return []`, so
+every 401, 403, 404, and 500 reaches the caller as an empty list with no
+exception and no status. Nothing in this package may use it, because a tool
+that cannot tell "denied" from "none" will eventually tell an operator that a
+referenced object is safe to delete. `fetch_table` is the replacement.
+
+The second is that the library's token login calls `session.get()` with no
+timeout, while the password branch beside it passes one. Token auth is the mode
+we recommend, so the recommended path is the unbounded one. Measured against an
+unroutable address, a single tool call took 134 seconds. `connect` performs that
+login itself, with a deadline, and hands the library a ready session.
 """
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import urljoin
 
+import requests
 from fortigate_api import FortiGateAPI
 
 from mcfortigate.config import FortiGateTarget
-from mcfortigate.fortios import FortiOSError
+from mcfortigate.fortios import FortiOSError, check_response
+
+# Canonical FortiOS cmdb paths. Spelled out rather than read from the library's
+# private `_path` attributes so a reader can see exactly which endpoint each
+# tool reads, and so a library refactor cannot silently retarget them.
+ADDRESSES = "api/v2/cmdb/firewall/address"
+ADDRESS_GROUPS = "api/v2/cmdb/firewall/addrgrp"
+SERVICES = "api/v2/cmdb/firewall.service/custom"
+SERVICE_GROUPS = "api/v2/cmdb/firewall.service/group"
+POLICIES = "api/v2/cmdb/firewall/policy"
+VIPS = "api/v2/cmdb/firewall/vip"
+INTERFACES = "api/v2/cmdb/system/interface"
+STATIC_ROUTES = "api/v2/cmdb/router/static"
+SYSTEM_GLOBAL = "api/v2/cmdb/system/global"
+
+# Monitor endpoints report observed state rather than configuration.
+MON_SYSTEM_STATUS = "api/v2/monitor/system/status"
+MON_WIFI_CLIENTS = "api/v2/monitor/wifi/client"
+MON_DHCP_LEASES = "api/v2/monitor/system/dhcp"
+MON_ARP = "api/v2/monitor/network/arp"
+MON_ROUTING_TABLE = "api/v2/monitor/router/ipv4"
+
+
+class MonitorResult:
+    """A monitor read, carrying why it is empty when it is empty.
+
+    An absent endpoint and a denied one both produce no rows, and they mean
+    opposite things. A FortiGate with no radio genuinely has no wireless client
+    list, and a tool joining several sources should carry on without it. A
+    FortiGate that refused the read is a permissions problem the operator needs
+    told about. Collapsing both to a bare list makes the second invisible.
+
+    The rule: fail soft on absence, never on denial.
+    """
+
+    __slots__ = ("rows", "status", "detail")
+
+    def __init__(self, rows: list[dict[str, Any]], status: str, detail: str | None = None) -> None:
+        """Record the rows alongside why there are however many there are."""
+        self.rows = rows
+        self.status = status
+        self.detail = detail
+
+    @property
+    def ok(self) -> bool:
+        """True when the endpoint answered."""
+        return self.status == "ok"
+
+    @property
+    def usable(self) -> bool:
+        """True when carrying on without these rows is honest.
+
+        An endpoint the platform does not implement is a fact about the
+        hardware. A denial or a transport failure is not, and callers should
+        surface those rather than quietly degrading.
+        """
+        return self.status in {"ok", "unsupported"}
+
+    def describe(self) -> str:
+        """Short status suitable for putting in a tool response."""
+        return self.status if self.detail is None else f"{self.status}: {self.detail}"
+
+
+def _token_session(target: FortiGateTarget) -> requests.Session:
+    """Authenticate a token session under our own deadline.
+
+    The library would do this lazily inside the first request with no timeout at
+    all. Doing it here means an appliance that drops packets rather than
+    refusing them costs us `target.timeout` instead of blocking until the
+    operating system gives up.
+    """
+    session = requests.Session()
+    port = f":{target.port}" if target.port else ""
+    base = f"{target.scheme}://{target.host}{port}"
+    try:
+        response = session.get(
+            urljoin(base, "/" + MON_SYSTEM_STATUS),
+            headers={"Authorization": f"Bearer {target.token}"},
+            verify=target.verify_ssl,
+            timeout=target.timeout,
+        )
+    except requests.exceptions.Timeout as exc:
+        session.close()
+        raise FortiOSError(
+            f"{target.name} at {target.url} did not respond within {target.timeout}s. "
+            "Check that the appliance is reachable and that any tunnel is still open."
+        ) from exc
+    except requests.exceptions.RequestException as exc:
+        session.close()
+        raise FortiOSError(f"Could not reach {target.name} at {target.url}: {type(exc).__name__}") from exc
+
+    if response.status_code in {401, 403}:
+        session.close()
+        raise FortiOSError(
+            f"{target.name} rejected the API token (http={response.status_code}). "
+            "Check that the token is correct and that this host is in its trusted-host list."
+        )
+    if response.status_code != 200:
+        session.close()
+        raise FortiOSError(f"{target.name} returned http={response.status_code} during authentication")
+    return session
 
 
 @contextmanager
 def connect(target: FortiGateTarget) -> Iterator[FortiGateAPI]:
     """Open a FortiGate session for the duration of the block.
 
-    Suppresses urllib3's unverified-HTTPS warning when the target opts out of
-    certificate verification, since a lab appliance with a self-signed cert is
-    a deliberate configuration rather than something to warn about on every
-    single call.
+    Sessions are per call rather than pooled. With token auth there is no login
+    round-trip to amortize, and never holding a session across an idle server is
+    worth more than saving one that costs nothing.
+
+    With username and password the library performs a full login per call, which
+    writes an admin login event to the appliance event log each time. A chatty
+    model can produce a lot of those, which is one more reason to prefer a token.
     """
     kwargs: dict[str, Any] = {
         "host": target.host,
@@ -46,53 +158,102 @@ def connect(target: FortiGateTarget) -> Iterator[FortiGateAPI]:
         kwargs["password"] = target.password
 
     api = FortiGateAPI(**kwargs)
-    with warnings.catch_warnings():
-        if not target.verify_ssl:
-            warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+
+    # Pre-authenticate the token path ourselves so it is bounded. The library
+    # only logs in when `_session` is unset, so handing it a live session skips
+    # its own unbounded probe entirely. The password path already passes a
+    # timeout, so it is left alone.
+    if target.token:
+        api.fortigate._session = _token_session(target)  # noqa: SLF001 - see module docstring
+
+    try:
+        yield api
+    finally:
+        session = getattr(api.fortigate, "_session", None)
         try:
-            yield api
-        finally:
+            api.logout()
+        except Exception:  # noqa: BLE001 - a logout failure must not destroy a good answer
+            pass
+        if session is not None:
             try:
-                api.logout()
-            except Exception:  # noqa: BLE001 - logout failures must not mask a real error
+                session.close()
+            except Exception:  # noqa: BLE001 - socket teardown, nothing to salvage
                 pass
 
 
-def fetch_envelope(api: FortiGateAPI, url: str) -> dict[str, Any]:
-    """GET a cmdb URL and return the full response envelope.
+def _rows(body: Any, url: str) -> list[dict[str, Any]]:
+    """Normalize a FortiOS `results` payload into a list of records.
 
-    The envelope matters. FortiOS puts the appliance serial, firmware version,
-    and build number as top-level siblings of ``results``, not inside it, and
-    the library's ``get_result`` helper discards everything except ``results``.
-    Worse, that helper coerces ``results`` with ``dict()``, which raises on any
-    endpoint whose results are a list. Reading the raw response sidesteps both
-    problems, and is the only way to see the serial at all.
+    FortiOS returns a list for table endpoints and a bare object for singular
+    ones such as `system/global`. The library's helper coerces with `list()`,
+    which on an object silently yields its keys as strings, so callers receive a
+    list of meaningless strings or, after filtering, nothing at all. Both shapes
+    are handled here and anything else is an error rather than an empty result.
     """
-    resp = api.fortigate.get(url)
-    status_code = getattr(resp, "status_code", None)
-    if status_code != 200:
-        raise FortiOSError(f"FortiOS rejected GET {url}: http={status_code}")
-    body = resp.json()
     if not isinstance(body, dict):
         raise FortiOSError(f"Unexpected response shape from {url}: {type(body).__name__}")
+    results = body.get("results")
+    if results is None:
+        return []
+    if isinstance(results, dict):
+        return [results]
+    if isinstance(results, list):
+        return [row for row in results if isinstance(row, dict)]
+    raise FortiOSError(f"Unexpected results shape from {url}: {type(results).__name__}")
+
+
+def fetch_table(api: FortiGateAPI, path: str) -> list[dict[str, Any]]:
+    """Read a cmdb table, raising on any status other than 200.
+
+    Use this rather than `api.cmdb.*.get()` anywhere in this package. The
+    library's connector turns every error status into an empty list, which makes
+    a denied read indistinguishable from an empty table.
+
+    The request still goes through the library's request builder, so it inherits
+    vdom scoping, the bearer header, and the per-request timeout.
+    """
+    response = api.fortigate.get(path)
+    check_response(response, f"GET {path}")
+    return _rows(response.json(), path)
+
+
+def fetch_envelope(api: FortiGateAPI, path: str) -> dict[str, Any]:
+    """Read a cmdb URL and return the whole response envelope.
+
+    The envelope matters because FortiOS puts the appliance serial, firmware
+    version, and build number as siblings of `results` rather than inside it.
+    Helpers that unwrap straight to `results` discard them, which is why the
+    serial appears to be missing from the API until you read the raw response.
+    """
+    response = api.fortigate.get(path)
+    check_response(response, f"GET {path}")
+    body = response.json()
+    if not isinstance(body, dict):
+        raise FortiOSError(f"Unexpected response shape from {path}: {type(body).__name__}")
     return body
 
 
-def fetch_monitor(api: FortiGateAPI, url: str) -> list[dict[str, Any]]:
-    """GET a monitor endpoint, returning an empty list when it is unavailable.
+def fetch_monitor(api: FortiGateAPI, path: str) -> MonitorResult:
+    """Read a monitor endpoint, distinguishing absence from denial.
 
-    The monitor tree is where FortiOS exposes observed runtime state rather
-    than configuration, and its endpoints vary by platform and firmware. A
-    FortiGate with no wireless hardware has no ``monitor/wifi/client`` at all.
-    Failing soft keeps one absent feature from taking down a tool that joins
-    several sources.
+    Returns a :class:`MonitorResult` rather than a list so the caller can tell
+    an unimplemented endpoint from a refused one. See that class for why the
+    difference matters.
     """
     try:
-        data = api.fortigate.get_results(url)
-    except Exception:  # noqa: BLE001 - per-endpoint fail-soft is the point
-        return []
-    if isinstance(data, list):
-        return [item for item in data if isinstance(item, dict)]
-    if isinstance(data, dict):
-        return [data]
-    return []
+        response = api.fortigate.get(path)
+    except Exception as exc:  # noqa: BLE001 - transport failure is a reportable status
+        return MonitorResult([], "error", f"{type(exc).__name__}")
+
+    status_code = getattr(response, "status_code", None)
+    if status_code in {404, 405}:
+        return MonitorResult([], "unsupported", f"http={status_code}")
+    if status_code in {401, 403}:
+        return MonitorResult([], "denied", f"http={status_code}")
+    if status_code != 200:
+        return MonitorResult([], "error", f"http={status_code}")
+
+    try:
+        return MonitorResult(_rows(response.json(), path), "ok")
+    except (FortiOSError, ValueError) as exc:
+        return MonitorResult([], "error", str(exc)[:120])

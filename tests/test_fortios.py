@@ -157,15 +157,11 @@ class TestSummarizeAddress:
         assert summary["value"] == "example.com"
 
     def test_iprange(self):
-        summary = summarize_address(
-            {"name": "POOL", "type": "iprange", "start-ip": "10.0.0.5", "end-ip": "10.0.0.10"}
-        )
+        summary = summarize_address({"name": "POOL", "type": "iprange", "start-ip": "10.0.0.5", "end-ip": "10.0.0.10"})
         assert summary["value"] == "10.0.0.5-10.0.0.10"
 
     def test_mac_type_is_readable(self):
-        summary = summarize_address(
-            {"name": "cam", "type": "mac", "macaddr": [{"macaddr": "aa:bb:cc:dd:ee:01"}]}
-        )
+        summary = summarize_address({"name": "cam", "type": "mac", "macaddr": [{"macaddr": "aa:bb:cc:dd:ee:01"}]})
         assert summary["value"] == "aa:bb:cc:dd:ee:01"
 
     def test_type_defaults_to_ipmask_when_absent(self):

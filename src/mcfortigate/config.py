@@ -236,12 +236,9 @@ class TargetRegistry:
             try:
                 return self._targets[target]
             except KeyError:
-                raise ConfigError(
-                    f"Unknown target {target!r}. Configured targets: {', '.join(self.names)}"
-                ) from None
+                raise ConfigError(f"Unknown target {target!r}. Configured targets: {', '.join(self.names)}") from None
         if len(self._targets) == 1:
             return next(iter(self._targets.values()))
         raise ConfigError(
-            f"Several FortiGates are configured, so 'target' is required. "
-            f"Choose one of: {', '.join(self.names)}"
+            f"Several FortiGates are configured, so 'target' is required. Choose one of: {', '.join(self.names)}"
         )

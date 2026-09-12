@@ -5,6 +5,8 @@ questions about it.
 
 Read-only. Nothing in this server can change a configuration.
 
+Full documentation: **[mcfortigate.warehack.ing](https://mcfortigate.warehack.ing)**
+
 ## Why not just wrap the REST API
 
 The obvious way to build this is one tool per FortiOS endpoint returning raw
@@ -20,7 +22,17 @@ than around the endpoints FortiOS happens to expose. Three examples.
 **"Is this address object safe to delete?"** is `find_references`. Behind it are
 five REST calls covering policies on both the source and service sides, address
 and service group membership, virtual IPs, and static routes, collapsed into one
-answer with a `safe_to_delete` boolean.
+answer.
+
+That answer is deliberately three-valued rather than a boolean. A token scoped
+to firewall objects gets 403 on the routing table, and the client library turns
+every error status into an empty list, so a naive implementation counts zero
+references and reports that a heavily-used object is safe to delete. Doing
+least privilege correctly makes that *more* likely, not less. So the tool reads
+each source with its status checked, reports `verdict` as `no_references`,
+`referenced`, or `indeterminate`, names what it could not read in
+`sources_checked`, and omits `safe_to_delete` entirely unless every source
+answered.
 
 **"What is 192.168.1.47?"** is `find_device`. It searches the wireless client
 list, the DHCP lease table, and the ARP table, then merges what each one knows

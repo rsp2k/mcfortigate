@@ -100,9 +100,7 @@ class TestToolRegistration:
 
     def test_most_tools_accept_a_target(self, tools: dict):
         """Only list_targets, which enumerates them, has no target argument."""
-        without_target = {
-            name for name, tool in tools.items() if "target" not in tool.parameters.get("properties", {})
-        }
+        without_target = {name for name, tool in tools.items() if "target" not in tool.parameters.get("properties", {})}
         assert without_target == {"list_targets"}
 
     def test_query_style_tools_require_their_subject(self, tools: dict):
@@ -110,3 +108,34 @@ class TestToolRegistration:
         assert "term" in tools["search_config"].parameters.get("required", [])
         assert "query" in tools["find_device"].parameters.get("required", [])
         assert "object_name" in tools["find_references"].parameters.get("required", [])
+
+
+class TestToolAnnotations:
+    """Every tool must declare what it does before a client calls it.
+
+    A client deciding whether a call needs human approval reads these hints. A
+    server that writes nothing should say so rather than leaving that to be
+    inferred from a tool name.
+    """
+
+    def test_every_tool_is_annotated(self, tools: dict):
+        unannotated = [name for name, tool in tools.items() if not tool.annotations]
+        assert unannotated == []
+
+    def test_every_tool_declares_itself_read_only(self, tools: dict):
+        """There is no write path in this package, so there is no exception."""
+        writable = [name for name, tool in tools.items() if not tool.annotations.read_only_hint]
+        assert writable == []
+
+    def test_no_tool_claims_to_be_destructive(self, tools: dict):
+        destructive = [name for name, tool in tools.items() if tool.annotations.destructive_hint]
+        assert destructive == []
+
+    def test_every_tool_is_open_world(self, tools: dict):
+        """Answers describe an appliance that changes without our involvement."""
+        closed = [name for name, tool in tools.items() if not tool.annotations.open_world_hint]
+        assert closed == []
+
+    def test_every_tool_has_a_human_title(self, tools: dict):
+        untitled = [name for name, tool in tools.items() if not (tool.annotations.title or "").strip()]
+        assert untitled == []

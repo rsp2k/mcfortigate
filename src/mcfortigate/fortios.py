@@ -28,9 +28,29 @@ class FortiOSError(RuntimeError):
     ``{"status": "error", "error": -23, "cli_error": "..."}`` rather than a 4xx,
     and the underlying client library does not check status for us. Losing that
     body turns a diagnosable problem into a silent no-op, which is exactly how
-    a create bug survived three releases of the sibling SSoT project. The
-    message preserves the FortiOS error code and cli_error text.
+    a create bug survived three releases of the sibling SSoT project.
+
+    The status and error code are kept as attributes rather than only as text,
+    so callers reporting a partial failure can describe it without parsing an
+    error message back apart.
     """
+
+    def __init__(self, message: str, *, http_status: int | None = None, error_code: Any = None) -> None:
+        """Record the message alongside the FortiOS status and error code."""
+        super().__init__(message)
+        self.http_status = http_status
+        self.error_code = error_code
+
+    def summary(self) -> str:
+        """Compact status suitable for putting in a tool response."""
+        parts = []
+        if self.http_status is not None:
+            parts.append(f"http={self.http_status}")
+        if self.error_code is not None:
+            parts.append(f"error={self.error_code}")
+        if self.http_status in {401, 403}:
+            return "denied: " + " ".join(parts)
+        return ("failed: " + " ".join(parts)) if parts else "failed"
 
 
 def check_response(resp: Any, label: str) -> Any:
@@ -43,16 +63,18 @@ def check_response(resp: Any, label: str) -> Any:
     if status_code == 200:
         return resp
     detail = ""
+    error_code = None
     try:
         body = resp.json()
-        detail = (
-            f" status={body.get('status')!r}"
-            f" error={body.get('error')!r}"
-            f" cli_error={body.get('cli_error')!r}"
-        )
+        error_code = body.get("error")
+        detail = f" status={body.get('status')!r} error={error_code!r} cli_error={body.get('cli_error')!r}"
     except Exception:  # noqa: BLE001 - body may not be JSON at all
         detail = f" body={getattr(resp, 'text', '')[:200]!r}"
-    raise FortiOSError(f"FortiOS rejected {label}: http={status_code}{detail}")
+    raise FortiOSError(
+        f"FortiOS rejected {label}: http={status_code}{detail}",
+        http_status=status_code,
+        error_code=error_code,
+    )
 
 
 def fortios_bool(value: Any, *, default: bool = False) -> bool:
@@ -81,6 +103,32 @@ def fortios_bool(value: Any, *, default: bool = False) -> bool:
     if isinstance(value, (int, float)):
         return bool(value)
     return str(value).strip().lower() in {"enable", "enabled", "true", "yes", "on", "1", "up"}
+
+
+def fortios_int(value: Any) -> int | None:
+    """Read a FortiOS numeric field that may arrive as a string.
+
+    FortiOS is not consistent about quoting numbers. An `isinstance(value, int)`
+    check therefore discards real data: an interface whose `vlanid` arrives as
+    `"200"` reads as having no VLAN tag at all, which is the same class of
+    type-assumption failure that :func:`fortios_bool` exists to prevent, one
+    field over.
+
+    >>> fortios_int(100)
+    100
+    >>> fortios_int("200")
+    200
+    >>> fortios_int("")
+    >>> fortios_int(None)
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def member_names(value: Any) -> list[str]:
@@ -241,8 +289,17 @@ def summarize_address(raw: dict) -> dict[str, Any]:
         value = ",".join(m for m in macs if m) or None
     elif ftype == "dynamic":
         value = raw.get("sub-type") or "external-connector"
+    elif ftype == "wildcard":
+        # A non-contiguous mask, which is exactly the kind of object an
+        # operator asks about because it is hard to reason about. Reporting it
+        # as having no value would hide the most surprising thing on the box.
+        value = raw.get("wildcard")
 
     summary: dict[str, Any] = {"name": name, "type": ftype, "value": value}
+    if value is None:
+        # An unhandled type must be loud rather than blank, or a future FortiOS
+        # address kind silently becomes invisible to every search.
+        summary["unparsed_type"] = ftype
     if raw.get("comment"):
         summary["comment"] = raw["comment"]
     if raw.get("associated-interface"):
@@ -347,10 +404,21 @@ def summarize_interface(raw: dict) -> dict[str, Any]:
     if secondaries:
         summary["secondary_ips"] = secondaries
 
+    # An interface that gets its address by DHCP or PPPoE genuinely holds no
+    # address in the configuration, so reporting only the absence of "ip" would
+    # answer "what is my WAN address" with "it has none". Say how it is
+    # addressed instead, and point at the runtime view.
+    mode = raw.get("mode")
+    if mode and mode != "static":
+        summary["addressing"] = mode
+        if address is None:
+            summary["note"] = f"address assigned by {mode}; see get_routing_table for the runtime value"
+
     # A VLAN sub-interface names its parent in "interface" and its tag in
-    # "vlanid". FortiOS reports vlanid 0 on interfaces that carry no tag.
-    vlan_id = raw.get("vlanid")
-    if isinstance(vlan_id, int) and vlan_id > 0:
+    # "vlanid". FortiOS reports vlanid 0 on interfaces that carry no tag, and
+    # sometimes quotes the number, hence fortios_int rather than isinstance.
+    vlan_id = fortios_int(raw.get("vlanid"))
+    if vlan_id is not None and vlan_id > 0:
         summary["vlan_id"] = vlan_id
     if raw.get("interface"):
         summary["parent"] = raw["interface"]
@@ -406,6 +474,41 @@ def summarize_route(raw: dict) -> dict[str, Any]:
     if raw.get("comment"):
         summary["comment"] = raw["comment"]
     return summary
+
+
+def resolve_route_destinations(
+    summaries: list[dict[str, Any]],
+    address_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Fill in named route destinations from the address table, in place.
+
+    Shared deliberately. When each caller resolved separately, two tools
+    reported different destinations for the same route in the same conversation:
+    one had done the lookup and the other had not. The output contract of
+    :func:`summarize_route` should not depend on which caller post-processed it.
+
+    Every summary gains a ``destination_resolution`` field so the three states
+    stay distinguishable: a literal ``dst``, a named object we resolved, and a
+    named object we could not.
+    """
+    by_name = {row.get("name", ""): row for row in address_rows}
+    for summary in summaries:
+        named = summary.get("destination_address_object")
+        if not named:
+            summary["destination_resolution"] = "literal"
+            continue
+        if isinstance(named, list):
+            summary["destination_resolution"] = "named_unresolved"
+            continue
+        referenced = by_name.get(named)
+        if referenced and referenced.get("type", "ipmask") in {"ipmask", "interface-subnet"}:
+            resolved = subnet_to_cidr(referenced.get("subnet", ""))
+            if resolved:
+                summary["destination"] = resolved
+                summary["destination_resolution"] = "named_resolved"
+                continue
+        summary["destination_resolution"] = "named_unresolved"
+    return summaries
 
 
 def normalize_mac(value: str) -> str:
