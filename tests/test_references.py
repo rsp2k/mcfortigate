@@ -247,6 +247,61 @@ class TestObjectIdentity:
         assert result.get("safe_to_delete") is not True
 
 
+class TestTheTwoCountsDisagreeOnPurpose:
+    """One object referenced twice by one policy, counted two ways.
+
+    Measured on the lab: asking about `all` returns `total_references: 2`,
+    because policy 1 uses it at both `srcaddr` and `dstaddr`, while `policies`
+    holds a single entry annotated with both roles. Reading those side by side
+    looks like a bug unless you know the authoritative list counts reference
+    sites and the detail list counts objects.
+
+    Pinned here because the obvious "fix" for the apparent discrepancy is to
+    make one of them match the other, which would lose real information either
+    way: collapsing sites hides that two fields must change, and expanding
+    objects would list the same policy twice for an operator to open once.
+    """
+
+    def _both_roles(self, monkeypatch):
+        routes = dict(EMPTY_TABLES)
+        routes["cmdb/firewall/address"] = table([{"name": "ANY", "subnet": "0.0.0.0 0.0.0.0"}])
+        routes["cmdb/firewall/policy"] = table(
+            [
+                {
+                    "policyid": 1,
+                    "name": "policy-1",
+                    "status": "enable",
+                    "action": "accept",
+                    "srcaddr": [{"name": "ANY"}],
+                    "dstaddr": [{"name": "ANY"}],
+                    "service": [{"name": "ALL"}],
+                    "srcintf": [{"name": "wan1"}],
+                    "dstintf": [{"name": "lan"}],
+                }
+            ]
+        )
+        routes["monitor/system/object/usage"] = usage(
+            [
+                reference("firewall", "policy", "1", "srcaddr"),
+                reference("firewall", "policy", "1", "dstaddr"),
+            ]
+        )
+        return references_for("ANY", routes, monkeypatch)[0]
+
+    def test_authoritative_list_counts_reference_sites(self, monkeypatch):
+        """Two fields of one policy are two places that must change."""
+        result = self._both_roles(monkeypatch)
+        assert result["total_references"] == 2
+        assert len(result["references"]) == 2
+        assert {row["attribute"] for row in result["references"]} == {"srcaddr", "dstaddr"}
+
+    def test_detail_list_counts_objects_and_names_both_roles(self, monkeypatch):
+        """One policy is one thing to open, whatever number of fields it uses."""
+        result = self._both_roles(monkeypatch)
+        assert len(result["policies"]) == 1
+        assert result["policies"][0]["referenced_as"] == ["source", "destination"]
+
+
 class TestAuthorityOfTheVerdict:
     """`safe_to_delete: true` requires the authoritative source to have answered."""
 

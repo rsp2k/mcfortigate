@@ -238,6 +238,15 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         least-privileged token, so an incomplete answer is normal rather than
         exceptional, and `sources_checked` names what failed.
 
+        The two lists count different things, and will disagree without being
+        in conflict. `total_references` and `references` count reference
+        *sites*: a policy using one address as both its source and its
+        destination is two. The detail lists (`policies`, `groups`, `vips`,
+        `routes`) count *objects*, so the same policy appears once there, with
+        `referenced_as` naming both roles. Neither number is wrong; prefer
+        `references` when reporting what must be changed before a delete, and
+        the detail lists when naming the objects an operator has to open.
+
         Group membership is not expanded transitively: an object inside a group
         that a policy uses is reported as referenced by the group, not by the
         policy.
