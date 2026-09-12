@@ -47,6 +47,17 @@ export default defineConfig({
   site: 'https://mcfortigate.warehack.ing',
   telemetry: false,
   devToolbar: { enabled: false },
+  // Astro 7 deprecates this array form in favour of unified() from
+  // @astrojs/markdown-remark. Swapping to unified() builds clean and emits no
+  // warning, but the plugin below silently stops running — zero table-scroll
+  // wrappers in the output — so it replaces the processor config rather than
+  // extending it. Staying on the deprecated form until there is a way to
+  // extend. (Expressive Code survives either way; only the plugin is lost.)
+  //
+  // Needs @astrojs/markdown-remark as an explicit dependency, since Astro 7
+  // no longer installs it by default and a clean `npm ci` fails without it —
+  // which is a container-only failure, because a local node_modules usually
+  // already has it hoisted.
   markdown: {
     rehypePlugins: [rehypeScrollableTables],
   },
