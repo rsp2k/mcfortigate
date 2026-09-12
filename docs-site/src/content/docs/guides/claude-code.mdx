@@ -86,7 +86,7 @@ The server also writes a line to stderr at startup, which Claude Code surfaces
 in the MCP logs:
 
 ```
-mcfortigate v2026.9.11 | targets: fgt.example.com
+mcfortigate v2026.9.12 | targets: fgt.example.com
 ```
 
 That line is the fastest way to tell a credential problem from a configuration
@@ -104,10 +104,10 @@ reproducing a result from last month — pin it:
 claude mcp add fortigate \
   --env FORTIGATE_HOST=fgt.example.com \
   --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \
-  -- uvx mcfortigate@2026.9.11
+  -- uvx mcfortigate@2026.9.12
 ```
 
-Versions are dates. `2026.9.11` is the release built on 11 September 2026,
+Versions are dates. `2026.9.12` is the release built on 12 September 2026,
 which tells you when it was last tested against a real appliance — a more
 useful fact about a server that talks to vendor firmware than a semantic
 version number would be.

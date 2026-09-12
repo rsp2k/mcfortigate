@@ -13,7 +13,7 @@ The server writes one line to stderr when it starts, and it answers the first
 question worth asking:
 
 ```
-mcfortigate v2026.9.11 | targets: fgt.example.com
+mcfortigate v2026.9.12 | targets: fgt.example.com
 ```
 
 If that names your appliance, the environment reached the process. Everything
