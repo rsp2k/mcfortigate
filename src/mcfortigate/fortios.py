@@ -18,6 +18,7 @@ the fields an operator would actually read and drop the rest.
 from __future__ import annotations
 
 import ipaddress
+import re
 from typing import Any
 
 
@@ -566,13 +567,30 @@ def summarize_interface(raw: dict) -> dict[str, Any]:
     if address:
         summary["ip"] = address
 
-    secondaries = [
-        cidr
-        for entry in (raw.get("secondaryip") or [])
-        if isinstance(entry, dict) and (cidr := interface_ip_to_cidr(entry.get("ip", "")))
-    ]
+    # Written as a loop rather than a comprehension with a walrus in its
+    # condition. That form tests the converted value for truthiness, so it would
+    # drop a legitimate address the moment the converter returned anything
+    # falsy, which is the family of mistake `bool("disable")` belongs to. The
+    # test here is on whether the conversion succeeded, not on what it produced.
+    #
+    # The second half matters as much: an entry this code cannot read used to
+    # disappear without trace, so an interface carrying an unparseable secondary
+    # address looked exactly like one carrying none.
+    secondaries: list[str] = []
+    unreadable = 0
+    for entry in raw.get("secondaryip") or []:
+        if not isinstance(entry, dict):
+            unreadable += 1
+            continue
+        cidr = interface_ip_to_cidr(entry.get("ip", ""))
+        if cidr is None:
+            unreadable += 1
+            continue
+        secondaries.append(cidr)
     if secondaries:
         summary["secondary_ips"] = secondaries
+    if unreadable:
+        summary["secondary_ips_unreadable"] = unreadable
 
     # An interface that gets its address by DHCP or PPPoE genuinely holds no
     # address in the configuration, so reporting only the absence of "ip" would
@@ -711,13 +729,82 @@ def describe_usage_row(row: dict[str, Any], looked_up_as: str) -> dict[str, Any]
     return described
 
 
-def normalize_mac(value: str) -> str:
-    """Lowercase a MAC address for comparison.
+#: The three ways a 48-bit MAC gets written. Colon and dash forms come from
+#: Unix and Windows tooling respectively, the four-digit dotted form from Cisco,
+#: and the bare form from anything that stripped the punctuation. Matching is
+#: anchored so that a value which is not a whole MAC cannot be reshaped.
+_MAC_WHOLE = re.compile(
+    r"^(?:[0-9a-f]{2}(?:[:-][0-9a-f]{2}){5}|[0-9a-f]{4}(?:\.[0-9a-f]{4}){2}|[0-9a-f]{12})$"
+)
 
-    FortiOS is not consistent about MAC casing between the wifi, DHCP, and ARP
-    endpoints, so joining records across them requires normalizing first.
+#: A whole MAC or a leading, trailing, or middle run of one, as an operator
+#: would paste it. The group sizes are what keeps an IPv4 address out: dotted
+#: groups must be four hex digits, so `192.168.1.47` cannot qualify, while
+#: colon and dash groups must be one or two, so `fe80::1` cannot either.
+_MAC_PART = re.compile(
+    r"^(?:[0-9a-f]{1,2}(?:[:-][0-9a-f]{1,2})+|[0-9a-f]{4}(?:\.[0-9a-f]{4})+|[0-9a-f]{12})$"
+)
+
+_MAC_SEPARATORS = str.maketrans("", "", ":-.")
+
+
+def normalize_mac(value: str) -> str:
+    """Canonicalize a MAC address to lowercase colon-separated form.
+
+    `find_device` and `list_wifi_clients` join the wifi, DHCP, and ARP tables on
+    this value, and a join key normalized on only one axis is a join that can
+    silently match nothing. Lowercasing alone leaves the key carrying whatever
+    punctuation its source happened to use, so `AA-BB-CC-DD-EE-FF` from one
+    endpoint and `aa:bb:cc:dd:ee:ff` from another describe one device and index
+    as two, with the tool reporting the device as unknown and nothing in the
+    output hinting why.
+
+    Measured on FWF61E / 7.0.14, every endpoint reachable with populated rows
+    used the colon form, so this is insurance rather than a fix for an observed
+    disagreement. It costs nothing and removes a whole failure mode.
+
+    Anything that is not a whole MAC comes back lowercased and otherwise
+    untouched, because inventing structure for a hostname or a truncated field
+    would be worse than leaving it alone.
 
     >>> normalize_mac("AA:BB:CC:DD:EE:01")
     'aa:bb:cc:dd:ee:01'
+    >>> normalize_mac("AA-BB-CC-DD-EE-01")
+    'aa:bb:cc:dd:ee:01'
+    >>> normalize_mac("aabb.ccdd.ee01")
+    'aa:bb:cc:dd:ee:01'
+    >>> normalize_mac("guest-laptop")
+    'guest-laptop'
     """
-    return (value or "").strip().lower()
+    text = (value or "").strip().lower()
+    if not _MAC_WHOLE.match(text):
+        return text
+    digits = text.translate(_MAC_SEPARATORS)
+    return ":".join(digits[index : index + 2] for index in range(0, 12, 2))
+
+
+def mac_fragment_digits(value: str) -> str | None:
+    """Reduce a MAC or part of one to bare hex digits, or None if it is not one.
+
+    The query side of the same join. An operator reads a MAC off whatever is in
+    front of them and pastes it, so the punctuation in the question rarely
+    matches the punctuation in the table. Comparing digits ignores that.
+
+    Returning None for anything that is not MAC-shaped is the load-bearing part.
+    An IPv4 address is made entirely of hex digits and dots, so a looser test
+    would let a query for `192.168.1.47` match an unrelated device by its MAC,
+    which is a confidently wrong answer rather than a missing one.
+
+    >>> mac_fragment_digits("20-47-47-7D-DB-7B")
+    '2047477ddb7b'
+    >>> mac_fragment_digits("7d:db:7b")
+    '7ddb7b'
+    >>> mac_fragment_digits("192.168.1.47")
+    """
+    text = (value or "").strip().lower()
+    if not _MAC_PART.match(text):
+        return None
+    digits = text.translate(_MAC_SEPARATORS)
+    # Two digits is one octet, which would match most of the table. Below four
+    # the answer is noise rather than a lookup.
+    return digits if len(digits) >= 4 else None
