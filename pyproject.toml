@@ -1,0 +1,96 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcfortigate"
+version = "2026.9.11"
+description = "MCP server for FortiGate / FortiOS — question-shaped tools for firewall, network, and live-client diagnostics."
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+authors = [{ name = "Ryan Malloy", email = "ryan@supported.systems" }]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "fastmcp",
+    "fortinet",
+    "fortigate",
+    "fortios",
+    "firewall",
+    "network-automation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: System Administrators",
+    "Intended Audience :: Telecommunications Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Networking",
+    "Topic :: System :: Networking :: Firewalls",
+]
+dependencies = [
+    "fastmcp>=4.0,<5",
+    "fortigate-api>=2.0,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+mcfortigate = "mcfortigate.server:main"
+
+[project.urls]
+Homepage = "https://github.com/rsp2k/mcfortigate"
+Issues = "https://github.com/rsp2k/mcfortigate/issues"
+Source = "https://github.com/rsp2k/mcfortigate"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcfortigate"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "CLAUDE.md",
+    "CLAUDE.md.tmp.*",
+    ".env",
+    ".env.local",
+    ".mcp.json",
+    "/local/",
+    "/artifacts/",
+    ".pytest_cache/",
+    ".ruff_cache/",
+    "dist/",
+    "build/",
+    "tests/",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "D",   # pydocstyle
+]
+ignore = [
+    "D203",  # one-blank-line-before-class (conflicts with D211)
+    "D213",  # multi-line-summary-second-line (conflicts with D212)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

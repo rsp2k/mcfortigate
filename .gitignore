@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# uv
+uv.lock
+
+# Credentials and local config
+.env
+.env.local
+.mcp.json
+
+# Local scratch
+/local/
+/artifacts/
