@@ -1,0 +1,18 @@
+:80 {
+	root * /srv
+	encode gzip zstd
+	try_files {path} {path}/
+	file_server
+
+	# Real HTTP 404 status with the custom 404 page body. Never write this as
+	# `try_files {path} {path}/ /404.html` — that form answers 200 for every
+	# missing path, so a stale or broken deploy looks healthy to uptime checks
+	# and to Search Console alike.
+	handle_errors {
+		@404 expression {err.status_code} == 404
+		handle @404 {
+			rewrite * /404.html
+			file_server
+		}
+	}
+}

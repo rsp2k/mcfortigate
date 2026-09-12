@@ -1,0 +1,134 @@
+/* mcfortigate docs — graphite and ember.
+ *
+ * Neutral charcoal carries the page; the one warm colour is reserved for the
+ * accent, which is a quiet nod to Fortinet's red without borrowing the alarm
+ * that a saturated red brings with it. Actual red and green appear only where
+ * they mean something — a policy that denies, a policy that allows — so the
+ * signal keeps its edge instead of being spent on link underlines.
+ */
+
+:root {
+  --sl-color-accent-low: #3a1508;
+  --sl-color-accent: #cf5a2a;
+  --sl-color-accent-high: #ffb08c;
+  --sl-color-white: #f5f6f7;
+  --sl-color-gray-1: #dfe2e5;
+  --sl-color-gray-2: #b7bcc2;
+  --sl-color-gray-3: #858c94;
+  --sl-color-gray-4: #545b63;
+  --sl-color-gray-5: #32383e;
+  --sl-color-gray-6: #1f2428;
+  --sl-color-black: #14181b;
+
+  /* Starlight cycles its card icons and "tip" asides through built-in hues,
+     purple among them. Remap the purple triplet onto the ember so no purple
+     ever renders. */
+  --sl-color-purple-low: #3a1508;
+  --sl-color-purple: #cf5a2a;
+  --sl-color-purple-high: #ffb08c;
+
+  /* Semantic pair, used only for firewall verdicts. */
+  --fg-allow: #4ade80;
+  --fg-deny: #f87171;
+  --fg-allow-bg: rgba(74, 222, 128, 0.12);
+  --fg-deny-bg: rgba(248, 113, 113, 0.12);
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #ffe3d6;
+  --sl-color-accent: #b2400f;
+  --sl-color-accent-high: #6b2408;
+  --sl-color-white: #14181b;
+  --sl-color-gray-1: #1f2428;
+  --sl-color-gray-2: #32383e;
+  --sl-color-gray-3: #5c646c;
+  --sl-color-gray-4: #8a929a;
+  --sl-color-gray-5: #c9ced3;
+  --sl-color-gray-6: #eaedef;
+  --sl-color-gray-7: #f5f6f7;
+  --sl-color-black: #ffffff;
+
+  --sl-color-purple-low: #ffe3d6;
+  --sl-color-purple: #b2400f;
+  --sl-color-purple-high: #6b2408;
+
+  --fg-allow: #15803d;
+  --fg-deny: #b91c1c;
+  --fg-allow-bg: rgba(21, 128, 61, 0.1);
+  --fg-deny-bg: rgba(185, 28, 28, 0.1);
+}
+
+/* The product name is a command you type, so the hero sets it in mono. */
+.hero h1 {
+  font-family: var(--__sl-font-mono, ui-monospace, monospace);
+  letter-spacing: -0.03em;
+}
+
+/* Verdict chips. Used in the ruleset and policy examples. */
+.verdict {
+  display: inline-block;
+  padding: 0.05em 0.5em;
+  border-radius: 0.25em;
+  font-family: var(--__sl-font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.verdict.allow {
+  color: var(--fg-allow);
+  background: var(--fg-allow-bg);
+}
+.verdict.deny {
+  color: var(--fg-deny);
+  background: var(--fg-deny-bg);
+}
+
+/* Starlight tints card icons by cycling its built-in hues, which across a
+   four-card grid reads as a rainbow with no meaning behind it. Give them all
+   the accent. Asides keep their semantic colours, since a danger callout being
+   red is the whole point of it. */
+article.card .icon {
+  background-color: var(--sl-color-accent-low);
+  border-color: color-mix(in srgb, var(--sl-color-accent) 40%, transparent);
+}
+
+/* Tables are wrapped in a scroll container by a rehype plugin, since the
+   four-column argument tables are wider than a phone and the last column
+   would otherwise be unreachable. The focus ring is the visible half of
+   making that container keyboard-scrollable. */
+.sl-markdown-content .table-scroll {
+  overflow-x: auto;
+  margin-block: 1rem;
+}
+
+/* max-content is the load-bearing part. Left at width:100% the table squeezes
+   to the container and its nowrap cells spill out visibly without growing the
+   wrapper's scrollWidth, so the container never actually scrolls and the last
+   column stays unreachable. Sizing to content makes the overflow real. */
+.sl-markdown-content .table-scroll > table {
+  margin-block: 0;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+
+.sl-markdown-content .table-scroll:focus-visible {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 3px;
+}
+
+/* Now that the container scrolls, tool names can keep their whole identifier
+   on one line instead of breaking mid-word. */
+.sl-markdown-content table code {
+  white-space: nowrap;
+}
+
+/* Tool reference headings read better with the signature attached, so give
+   the h3s a little more air than Starlight's default. */
+.sl-markdown-content h3 > code {
+  font-size: 1em;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--sl-color-white);
+}

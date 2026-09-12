@@ -47,7 +47,8 @@ dev = [
 mcfortigate = "mcfortigate.server:main"
 
 [project.urls]
-Homepage = "https://github.com/rsp2k/mcfortigate"
+Homepage = "https://mcfortigate.warehack.ing"
+Documentation = "https://mcfortigate.warehack.ing"
 Issues = "https://github.com/rsp2k/mcfortigate/issues"
 Source = "https://github.com/rsp2k/mcfortigate"
 
@@ -63,6 +64,7 @@ exclude = [
     ".mcp.json",
     "/local/",
     "/artifacts/",
+    "docs-site/",
     ".pytest_cache/",
     ".ruff_cache/",
     "dist/",

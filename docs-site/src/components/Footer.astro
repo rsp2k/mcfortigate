@@ -1,0 +1,45 @@
+---
+import Default from '@astrojs/starlight/components/Footer.astro';
+---
+
+<Default><slot /></Default>
+<div class="ss-joint">
+  <a href="https://supported.systems" rel="noopener">
+    <span class="ss-mark" aria-hidden="true">.:|:.</span>
+    <span>a <strong>Supported&nbsp;Systems</strong> joint</span>
+  </a>
+</div>
+
+<style>
+  .ss-joint {
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    display: flex;
+    justify-content: center;
+  }
+  .ss-joint a {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    text-decoration: none;
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+  }
+  .ss-joint a:hover {
+    color: var(--sl-color-accent-high);
+  }
+  .ss-mark {
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    letter-spacing: 0.08em;
+    color: var(--sl-color-accent);
+    font-weight: 600;
+  }
+  .ss-joint strong {
+    color: var(--sl-color-gray-2);
+    font-weight: 600;
+  }
+  .ss-joint a:hover strong {
+    color: var(--sl-color-accent-high);
+  }
+</style>

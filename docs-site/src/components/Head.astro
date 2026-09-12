@@ -1,0 +1,65 @@
+---
+// Starlight Head override: the default head, plus OG image meta and typed
+// JSON-LD. schema-dts types the structured data, so a malformed graph fails
+// the build rather than turning up months later in Search Console.
+import Default from '@astrojs/starlight/components/Head.astro';
+import { Schema } from 'astro-seo-schema';
+import { getImagePath } from 'astro-opengraph-images';
+
+const { url, site } = Astro;
+const ogImageUrl = getImagePath({ url, site });
+
+const route = Astro.locals.starlightRoute;
+const title = route?.entry?.data?.title ?? 'mcfortigate';
+const description =
+  route?.entry?.data?.description ??
+  'A read-only MCP server for FortiGate firewalls.';
+const canonical = new URL(url.pathname, site).href;
+const isHome = url.pathname === '/';
+---
+
+<Default><slot /></Default>
+<meta property="og:image" content={ogImageUrl} />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:image" content={ogImageUrl} />
+{
+  isHome ? (
+    <Schema
+      item={{
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: 'mcfortigate',
+        description,
+        url: site?.href,
+        applicationCategory: 'DeveloperApplication',
+        operatingSystem: 'Linux, macOS, Windows',
+        softwareVersion: '2026.9.11',
+        license: 'https://www.apache.org/licenses/LICENSE-2.0',
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        author: {
+          '@type': 'Organization',
+          name: 'Supported Systems',
+          url: 'https://supported.systems',
+        },
+      }}
+    />
+  ) : (
+    <Schema
+      item={{
+        '@context': 'https://schema.org',
+        '@type': 'TechArticle',
+        headline: title,
+        description,
+        url: canonical,
+        mainEntityOfPage: canonical,
+        publisher: {
+          '@type': 'Organization',
+          name: 'Supported Systems',
+          url: 'https://supported.systems',
+        },
+      }}
+    />
+  )
+}

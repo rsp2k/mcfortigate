@@ -1,0 +1,137 @@
+---
+/**
+ * The two halves of the tool surface, drawn against time.
+ *
+ * The point the diagram has to carry is persistence, not plumbing: the cmdb
+ * tree is a thing that survives a reboot and only changes when a person
+ * changes it, while the monitor tree is a running observation that resets and
+ * is only ever true at the instant you read it.
+ */
+---
+
+<figure class="cl">
+  <svg viewBox="0 0 720 260" role="img" aria-labelledby="cl-title cl-desc">
+    <title id="cl-title">Configuration compared with live state over time</title>
+    <desc id="cl-desc">
+      A time axis running left to right. The configuration lane is one
+      unbroken bar that continues straight through a reboot marker. The live
+      state lane is a run of short separate segments that stops at the reboot
+      and starts again afterwards. A vertical line near the right marks the
+      moment a question is asked, crossing both lanes.
+    </desc>
+
+    <!-- reboot marker. Stops above the live-lane caption rather than running
+         to the axis, so the dashes do not strike through the text. -->
+    <line x1="392" y1="24" x2="392" y2="172" class="cl-rule" />
+    <text x="392" y="18" class="cl-tick" text-anchor="middle">reboot</text>
+
+    <!-- lane 1: configuration -->
+    <text x="0" y="66" class="cl-lane">configuration</text>
+    <text x="0" y="84" class="cl-sub">cmdb</text>
+    <rect x="150" y="48" width="558" height="30" rx="6" class="cl-config" />
+    <text x="166" y="68" class="cl-inbar">what the appliance was told to do</text>
+
+    <!-- lane 2: live state, deliberately broken into separate observations -->
+    <text x="0" y="152" class="cl-lane">live state</text>
+    <text x="0" y="170" class="cl-sub">monitor</text>
+    <rect x="150" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="210" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="270" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="330" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="402" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="462" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="522" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="582" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <rect x="642" y="134" width="52" height="30" rx="4" class="cl-live" />
+    <text x="150" y="186" class="cl-sub">each one true only while you look at it</text>
+
+    <!-- the moment of the question -->
+    <line x1="608" y1="34" x2="608" y2="212" class="cl-now" />
+    <circle cx="608" cy="63" r="4" class="cl-dot" />
+    <circle cx="608" cy="149" r="4" class="cl-dot" />
+    <text x="608" y="228" class="cl-now-label" text-anchor="middle">your question</text>
+
+    <!-- time axis -->
+    <line x1="150" y1="212" x2="708" y2="212" class="cl-axis" />
+    <text x="708" y="228" class="cl-sub" text-anchor="end">time</text>
+  </svg>
+</figure>
+
+<style>
+  .cl {
+    margin: 1.75rem 0;
+    /* A timeline this wide cannot reflow into a phone column without becoming
+       a different diagram, so it scrolls instead. The min-width keeps the
+       labels above ~11px rather than letting them shrink to illegible. */
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .cl svg {
+    width: 100%;
+    min-width: 40rem;
+    height: auto;
+    overflow: visible;
+  }
+
+  .cl-lane {
+    fill: var(--sl-color-white);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .cl-sub {
+    fill: var(--sl-color-gray-3);
+    font-size: 12px;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .cl-config {
+    fill: var(--sl-color-accent-low);
+    stroke: var(--sl-color-accent);
+    stroke-width: 1.5;
+  }
+
+  .cl-inbar {
+    fill: var(--sl-color-white);
+    font-size: 13px;
+  }
+
+  .cl-live {
+    fill: none;
+    stroke: var(--sl-color-gray-3);
+    stroke-width: 1.5;
+  }
+
+  .cl-rule {
+    stroke: var(--sl-color-gray-4);
+    stroke-width: 1;
+    stroke-dasharray: 3 4;
+  }
+
+  .cl-tick {
+    fill: var(--sl-color-gray-3);
+    font-size: 11px;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .cl-now {
+    stroke: var(--sl-color-accent);
+    stroke-width: 1.5;
+  }
+
+  .cl-dot {
+    fill: var(--sl-color-accent);
+  }
+
+  .cl-now-label {
+    fill: var(--sl-color-accent-high);
+    font-size: 12px;
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+  }
+
+  .cl-axis {
+    stroke: var(--sl-color-gray-5);
+    stroke-width: 1;
+  }
+</style>

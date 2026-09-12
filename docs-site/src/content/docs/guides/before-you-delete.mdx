@@ -1,0 +1,177 @@
+---
+title: Checking before you delete something
+description: How to use find_references properly, and an honest list of what it does not check.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Every configuration change on a firewall is preceded by the same question: what
+breaks if I touch this. `find_references` answers it in one call.
+
+> Is the address object DMZ-SERVERS safe to delete?
+
+Behind that are five REST reads: policies on both the address and the service
+side, address group membership, service group membership, virtual IPs, and
+static routes. A reference in any one of them is a reason the answer is no.
+
+## Read the verdict, not the count
+
+```json
+{
+  "object": "DMZ-SERVERS",
+  "verdict": "referenced",
+  "total_references": 3,
+  "sources_checked": {
+    "policies": "ok", "address_groups": "ok", "service_groups": "ok",
+    "vips": "ok", "routes": "ok"
+  },
+  "safe_to_delete": false,
+  "policies": [
+    { "id": 9, "name": "block-legacy-smb", "enabled": true, "action": "deny", "referenced_as": ["destination"] },
+    { "id": 12, "name": "dmz-mgmt", "enabled": false, "action": "accept", "referenced_as": ["destination", "source"] }
+  ],
+  "groups": [{ "name": "ALL-SERVERS", "kind": "address_group" }],
+  "vips": [],
+  "routes": []
+}
+```
+
+`verdict` is `referenced`, `no_references`, or `indeterminate`, and it is the
+field to read. `safe_to_delete` is present only on the first two, because a
+source that could not be read cannot support a conclusion either way.
+
+`referenced_as` names the field the object turned up in, so a policy listing it
+as both source and destination reports both rather than being counted twice.
+
+**Disabled policies count.** Policy 12 above is off, and it is still a
+reference. A disabled policy is one somebody intends to turn back on, and
+deleting the object underneath it turns that into a surprise at the worst
+possible moment.
+
+**Group membership is not expanded.** `DMZ-SERVERS` is in `ALL-SERVERS`.
+Anything referencing `ALL-SERVERS` therefore depends on `DMZ-SERVERS`
+indirectly, and none of those policies appear in this result — they reference
+the group, not the object. The tool does not follow the chain for you. When
+`groups` is non-empty, run `find_references` again on each group name, and
+check that the model actually did rather than assuming it would.
+
+## When the answer is `indeterminate`
+
+<Aside type="caution" title="The least-privileged token is the one that gets this">
+A token scoped to firewall objects gets HTTP 403 on `router/static`. Doing
+least privilege *correctly* makes an indeterminate answer more likely, not
+less, so this is a normal outcome rather than a sign something is broken.
+</Aside>
+
+```json
+{
+  "object": "DMZ-SERVERS",
+  "verdict": "indeterminate",
+  "total_references": 1,
+  "sources_checked": {
+    "policies": "ok", "address_groups": "ok", "service_groups": "ok",
+    "vips": "ok", "routes": "denied: http=403"
+  },
+  "note": "Could not read: routes. The reference count is a lower bound and no conclusion about deletion safety is possible."
+}
+```
+
+No `safe_to_delete` key at all. That omission is deliberate — a `false` would
+invite you to read it as *not safe and here is why*, when the truth is that the
+question was never answered.
+
+`total_references` here is a **lower bound**. One reference was found and an
+unknown number were not looked at.
+
+Two ways forward: grant the profile read on the group that failed and ask
+again, or check that source by hand. What you cannot do is treat a count of one
+as a count of one.
+
+Without this distinction the failure is silent and severe: an empty list from a
+refused read looks exactly like an empty list from a clean table, and the tool
+would confidently report a heavily-used object as safe to delete. [How the
+denial case is handled throughout](/explanation/config-vs-live/#fail-soft-on-absence-never-on-denial).
+
+## What `safe_to_delete: true` actually means
+
+It means **nothing in the five places this tool checks points at the object,
+and all five were readable**.
+
+It does not mean deleting it is a good idea. Two different claims, and the gap
+between them is where the interesting failures live.
+
+<Aside type="caution" title="Not checked by this tool">
+`find_references` covers regular firewall policies, address and service groups,
+virtual IPs, and static routes. A FortiGate has more places to hide a
+reference than that. Not checked:
+
+- **Proxy policies**, **local-in policies**, **DoS policies**, and **multicast
+  policies**, each of which is a separate table
+- **Traffic shaping policies** and shaping profiles
+- **SD-WAN rules**, zones, and members
+- **Central SNAT** entries and **IP pools**
+- **VIP groups**, as opposed to the VIPs themselves
+- **IPsec phase-1 and phase-2** selectors
+- **Authentication and captive-portal rules**
+- **Security profiles** that can reference addresses, such as DNS filter
+  allowlists
+- **Other VDOMs** — every call is scoped to the configured VDOM only
+- **IPv6 policy tables** on firmware that keeps them separate
+
+The response carries `checked_scopes` naming what it *did* examine, which is
+the honest half of this. If your appliance uses any of the above heavily, treat
+`safe_to_delete: true` as *probably, and worth one more look* rather than as a
+verdict.
+</Aside>
+
+The honest framing: this tool eliminates the five checks that catch most
+references and that nobody enjoys doing by hand. It does not replace knowing
+your own configuration.
+
+## The wider gap
+
+There is a second kind of reference that no configuration read can see: things
+outside the firewall that depend on the object existing.
+
+A monitoring system polling a VIP by name. A runbook that says *add the host to
+DMZ-SERVERS*. A FortiManager policy package that will push the object back, or
+flag the appliance as out of sync when it disappears. A colleague's
+half-finished change.
+
+`safe_to_delete` is a statement about the configuration, and the configuration
+is not the whole system.
+
+## A workflow that holds up
+
+Ask in this order, and the answer at each step tells you whether the next one
+matters.
+
+**Start with the object itself.** `find_references` on the name. Check the
+verdict first: an `indeterminate` result means the rest of this workflow is
+premature, because you do not yet know what you are looking at. If it comes
+back `referenced`, you have your answer and the list of what to fix first.
+
+**Follow the groups.** Every name under `groups` gets its own
+`find_references` call. This is where indirect dependencies live, and it is the
+step most often skipped.
+
+**Check what else shares the value.** `search_config` on the object's IP or
+subnet finds *other objects covering the same addresses*, which is the common
+case where a duplicate was created years ago and half the policies use each.
+Deleting one and leaving the other looks clean and leaves the configuration
+inconsistent.
+
+**Check it is not doing something live.** If the object is a subnet, ask
+`get_arp_table` or `list_dhcp_leases` whether anything is actually on it. An
+object with no references and no live hosts is genuinely dead. An object with
+no references and forty active devices behind it is a documentation gap, not
+cruft.
+
+## And then
+
+This server cannot make the change. It reads, and that is all it does — so the
+deletion happens in the web UI or the CLI, by a person, with the reference list
+in front of them.
+
+That division is the point rather than a limitation.
+[Why read-only is structural here](/explanation/read-only/).

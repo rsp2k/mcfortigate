@@ -1,0 +1,122 @@
+---
+title: Querying several appliances
+description: Setting up FORTIGATE_TARGETS, choosing aliases a model will use correctly, and the JSON quoting that trips everyone once.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+One server can reach any number of FortiGates. Set `FORTIGATE_TARGETS` to a
+JSON object and the keys become the `target` argument on every tool.
+
+```bash
+FORTIGATE_TARGETS='{
+  "edge":   {"host": "fgt-edge1.example.com", "token": "..."},
+  "branch": {"host": "fgt-br2.example.com", "token": "...", "verify_ssl": false},
+  "lab":    {"host": "https://fgt.lab:8443", "username": "readonly", "password": "..."}
+}'
+```
+
+That is three appliances, each with its own credential, one of them on a
+non-standard port with legacy auth and one with certificate verification off.
+Per-target settings are independent; there is no shared default to fight with.
+
+## Choosing aliases
+
+The aliases are not cosmetic. They are what the model types, what it reports
+back to you, and what it has to get right when you say *check the branch
+firewall*.
+
+Use what people in the room already call the boxes. `edge`, `branch`, `dc`,
+`lab` work. Serial numbers and inventory codes work badly, because a model
+asked about *the Boise firewall* cannot map that to `FGT60F-0042` without being
+told, and it will guess.
+
+Keep them short. They appear in every tool call and every response.
+
+Keep them unambiguous by prefix. `branch1` and `branch2` are fine; `branch` and
+`branch-backup` invite a model to pick the wrong one when you say *branch*.
+
+## The quoting
+
+This is the part that trips everyone once. The value is a JSON object *inside*
+a shell environment variable, so the outer quoting has to survive the shell
+and the inner quoting has to survive JSON.
+
+In a `.env` file or a shell, wrap the whole thing in single quotes and use
+double quotes inside, as above. Do not swap them: JSON requires double quotes
+around its keys and string values, and single quotes there are a parse error.
+
+In a JSON client config the object has to be a *string*, which means escaping:
+
+```json
+{
+  "mcpServers": {
+    "fortigate": {
+      "command": "uvx",
+      "args": ["mcfortigate"],
+      "env": {
+        "FORTIGATE_TARGETS": "{\"edge\":{\"host\":\"fgt-edge1.example.com\",\"token\":\"...\"},\"branch\":{\"host\":\"fgt-br2.example.com\",\"token\":\"...\"}}"
+      }
+    }
+  }
+}
+```
+
+Unreadable, and easy to get wrong. Setting the variable in the environment and
+leaving it out of the client config entirely is the better move whenever the
+client inherits your shell.
+
+Malformed JSON is a startup error naming the parse failure, so you find out
+immediately rather than through an empty target list.
+
+## Growing from one to two
+
+The two configuration styles coexist, and `FORTIGATE_HOST` is read *after*
+`FORTIGATE_TARGETS`. A working single-appliance setup can therefore grow a
+second appliance without being restructured — add `FORTIGATE_TARGETS` with just
+the new box in it and leave the original variables alone.
+
+The existing appliance keeps whatever alias `FORTIGATE_NAME` gave it, or its
+hostname if you never set one. That is the moment to set `FORTIGATE_NAME`,
+because a hostname makes a poor alias and the model now has to choose between
+two.
+
+<Aside type="caution" title="One name collision to know about">
+Because the single-appliance block registers last, a `FORTIGATE_NAME` that
+matches a key in `FORTIGATE_TARGETS` silently overrides that entry. Useful if
+you mean it. Confusing if you do not.
+</Aside>
+
+## How the model handles the target argument
+
+With several appliances configured, omitting `target` is an error — and the
+error lists the valid aliases:
+
+```
+Several FortiGates are configured, so 'target' is required.
+Choose one of: branch, edge, lab
+```
+
+That is deliberate. A silent pick of the first alphabetically would produce a
+confident, well-formatted, entirely wrong answer about `branch` when you meant
+`edge`. An error naming the options lets the next call be correct, and in
+practice the model recovers without you noticing it happened.
+
+`list_targets` is how the model orients itself, and it makes no network calls —
+it reports what the server was configured with. It therefore answers instantly,
+and it answers even when every appliance is unreachable, which makes it the
+right first call when something is wrong.
+
+## Asking across all of them
+
+Nothing in the protocol stops a model from calling the same tool once per
+target and comparing. In practice this works well for questions with small
+answers:
+
+> Check every firewall for a policy allowing inbound SSH from anywhere.
+
+The model calls `list_targets`, then `list_policies` per appliance, and
+compares. Keep an eye on the size of what comes back — three appliances with
+large rulesets is three large rulesets in the context, and narrowing with a
+filter first (`service: "SSH"`) is the difference between a fast answer and a
+slow one.

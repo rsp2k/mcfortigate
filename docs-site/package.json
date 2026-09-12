@@ -1,0 +1,24 @@
+{
+  "name": "mcfortigate-docs",
+  "type": "module",
+  "version": "2026.09.11",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "astro": "^7.3.2",
+    "astro-opengraph-images": "^1.20.1",
+    "astro-seo-schema": "^7.0.0",
+    "react": "^19.2.8",
+    "schema-dts": "^1.1.5",
+    "sharp": "^0.35.4",
+    "starlight-links-validator": "^0.26.0",
+    "starlight-llms-txt": "^0.11.0"
+  }
+}

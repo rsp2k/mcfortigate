@@ -1,0 +1,42 @@
+services:
+  docs:
+    build:
+      context: .
+      target: prod
+    restart: unless-stopped
+    networks:
+      - caddy
+    labels:
+      caddy: ${DOMAIN}
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+  docs-dev:
+    profiles: [dev]
+    build:
+      context: .
+      target: dev
+    restart: unless-stopped
+    environment:
+      # Carries the external hostname into astro.config.mjs so the HMR
+      # websocket dials wss://$DOMAIN:443 instead of the container's own
+      # address, which is what survives a TLS-terminating Caddy in front.
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./src:/app/src
+      - ./astro.config.mjs:/app/astro.config.mjs
+      - ./public:/app/public
+    networks:
+      - caddy
+    labels:
+      caddy: ${DOMAIN}
+      caddy.reverse_proxy: "{{upstreams 4321}}"
+      caddy.reverse_proxy.flush_interval: "-1"
+      caddy.reverse_proxy.transport: "http"
+      caddy.reverse_proxy.transport.read_timeout: "0"
+      caddy.reverse_proxy.transport.write_timeout: "0"
+      caddy.reverse_proxy.stream_timeout: "24h"
+      caddy.reverse_proxy.stream_close_delay: "5s"
+
+networks:
+  caddy:
+    external: true

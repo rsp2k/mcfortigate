@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mcfortigate.warehack.ing/sitemap-index.xml

@@ -1,0 +1,140 @@
+---
+title: Reading a ruleset
+description: Asking useful questions about firewall policies, why evaluation order is preserved, and the limits of what a configuration read can tell you.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A firewall ruleset is an ordered list where the first match wins and everything
+unmatched is denied. Both halves of that sentence matter, and both are easy to
+lose when you read policies as an unordered set of objects.
+
+## Order is the meaning
+
+`list_policies` returns policies in the order FortiOS evaluates them, which is
+configuration order rather than sorted by ID. Nothing re-sorts them, and
+nothing should: the same rules in a different order are a different firewall.
+
+This is why *what does this ruleset allow* is a question about sequence. A
+broad <span class="verdict allow">accept</span> at position 3 means the
+carefully written <span class="verdict deny">deny</span> at position 9 never
+runs. The objects are identical either way; the behaviour is not.
+
+Ask the model to preserve it:
+
+> List the enabled policies in evaluation order and tell me if any rule is
+> shadowed by an earlier one.
+
+## Narrowing before you read
+
+A production ruleset does not fit comfortably in a conversation, and pulling
+all of it in to answer a narrow question is slow and makes the answer worse.
+`list_policies` takes four filters:
+
+```
+enabled_only   drop policies whose status is disabled
+interface      exact match on source or destination interface
+address        exact match on an address object or group, either side
+service        exact match on a service object
+```
+
+The filters are **exact match**, not substring. That is deliberate: policy
+filtering is usually asked as *show me everything touching this specific
+object*, and a substring match on `LAN` would quietly fold in `LAN-GUEST` and
+change the answer without saying so.
+
+They also **do not expand indirection**, which is the limitation more likely to
+bite you. A policy referencing a group that contains your address will not
+match `address`. A policy referencing a zone that contains your interface will
+not match `interface`. Filtering answers *which policies name this thing*,
+which is a narrower question than *which policies affect this thing*.
+
+For the wider question use `find_references`. For substring matching across
+every object type, use `search_config`.
+
+## Questions that work well
+
+**What can reach the internet.**
+
+> Show me every enabled policy from an internal interface to wan1 with action
+> accept.
+
+The answer is your egress surface. The `service` lists are the part to read
+carefully; a rule permitting `ALL` to the internet is a different thing from
+one permitting `HTTP HTTPS DNS`.
+
+**What is exposed inbound.**
+
+> What policies accept traffic from wan1, and what virtual IPs are configured?
+
+Two calls, `list_policies` and `list_vips`, and both are needed. An inbound
+policy usually references a VIP rather than an internal address, so the policy
+alone tells you a rule exists without telling you what it points at.
+
+**What uses this object.**
+
+> Which policies reference the address group INTERNAL?
+
+`list_policies` with `address: "INTERNAL"`. For the fuller version of that
+question — groups, VIPs, and routes too — use
+[`find_references`](/guides/before-you-delete/).
+
+**What is disabled.**
+
+> List the disabled policies and what each one was for.
+
+Disabled rules accumulate, and their comments are frequently the only record of
+why. This is a good audit question and a bad one to act on quickly: a disabled
+rule is often disabled *for now*.
+
+## What a configuration read cannot tell you
+
+Three honest limits, and the first is the one people most want past.
+
+**There are no hit counts here.** FortiOS tracks per-policy hit counts and this
+server does not expose them, so *which rules are actually being used* is not a
+question it can answer. That matters because hit counts are how you find rules
+that are safe to remove, and without them a rule that has matched nothing in
+two years looks identical to one matching constantly. Read the hit counts in
+the web UI under Policy & Objects, or from the CLI.
+
+**Shadowing is a reasoning task, not a lookup.** Nothing in FortiOS reports
+*this rule is unreachable*. A model can work it out from the ordered list, and
+it does a decent job when the overlap is obvious — an earlier rule with `all`
+as source and destination shadowing a later specific one. It does it less well
+when the overlap runs through group membership, because that requires expanding
+every group first. When the answer matters, ask for the reasoning and check it.
+
+**The implicit deny is not in the list.** FortiOS ends every ruleset with an
+implicit deny-all that is not a policy object and will not appear in any
+response. Traffic matching nothing is dropped. If a model tells you traffic is
+permitted because no rule denies it, that is exactly backwards, and it is worth
+noticing when it happens.
+
+<Aside type="tip" title="Ask for a table">
+Rulesets read badly as prose. *Answer as a markdown table with columns for ID,
+name, from, to, source, destination, service, and action* produces something
+you can scan, diff against last month's, and paste into a ticket.
+</Aside>
+
+## A review that goes somewhere
+
+A useful pass over a ruleset, in an order where each answer informs the next:
+
+Start with scale — how many policies, how many enabled. A ruleset with 200
+rules and 60 disabled is telling you something before you read any of them.
+
+Then the egress surface: accept rules toward the WAN interfaces, read for
+services rather than addresses.
+
+Then the ingress surface: accept rules from WAN, cross-referenced against
+`list_vips` so you know what each one actually reaches.
+
+Then `all` as a source or destination on any accept rule, which is where the
+overly-broad rules announce themselves.
+
+Then the disabled pile, read for comments rather than content.
+
+Then, finally, hit counts in the UI for anything that looked like a candidate
+for removal — because that is the check this server cannot do for you, and
+it is the one that separates *unused* from *unused since I last looked*.

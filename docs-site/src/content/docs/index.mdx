@@ -1,0 +1,95 @@
+---
+title: mcfortigate
+description: A read-only MCP server for FortiGate firewalls. Seventeen tools shaped around the questions operators ask, not the endpoints FortiOS exposes.
+template: splash
+head:
+  # Without this the home page title renders as "mcfortigate | mcfortigate",
+  # since the page title and the site title are the same word.
+  - tag: title
+    content: mcfortigate — a read-only MCP server for FortiGate
+hero:
+  tagline: Ask a FortiGate a question in plain language and get an answer back. Nothing here can change a configuration.
+  image:
+    file: ../../assets/hero.svg
+  actions:
+    - text: Get started
+      link: /tutorials/getting-started/
+      icon: right-arrow
+    - text: Tool reference
+      link: /reference/tools/
+      variant: minimal
+---
+
+import { Card, CardGrid, Code } from '@astrojs/starlight/components';
+import QuestionIndex from '../../components/QuestionIndex.astro';
+
+## Start with your question
+
+<QuestionIndex />
+
+## Why not just wrap the REST API
+
+The obvious way to build this is one tool per FortiOS endpoint returning raw
+JSON, and that turns out to work badly. A single FortiOS policy object carries
+more than eighty fields, most of them empty strings, unused IPv6 arrays, and
+internal UUIDs. Ask a model *which policies allow traffic into the DMZ* against
+a raw wrapper and it spends most of its attention on `"srcaddr6": []` before it
+finds anything useful.
+
+So the tools here are shaped around the questions rather than around the
+endpoints. `find_references` is five REST calls collapsed into one answer about
+whether an object is safe to delete — an answer that is deliberately
+three-valued, because the client library turns a denied read into an empty list
+and a naive version of this tool reports a heavily-used object as unreferenced.
+`find_device` merges the wireless client list,
+the DHCP lease table, and the ARP table into a single record per device, which
+requires normalizing MAC casing first because FortiOS reports it differently on
+each of those three endpoints. That work happens once, here, instead of being
+rediscovered by every model that asks.
+
+[The long version of the argument](/explanation/question-shaped-tools/) is worth
+reading before you decide how much of your own tooling to shape this way.
+
+## Install
+
+<Code
+  lang="bash"
+  code={`claude mcp add fortigate \\
+  --env FORTIGATE_HOST=fgt.example.com \\
+  --env FORTIGATE_TOKEN=your-token \\
+  -- uvx mcfortigate`}
+/>
+
+That is the whole setup, once you have a read-only REST API admin on the
+appliance. [Getting started](/tutorials/getting-started/) walks through creating
+one.
+
+:::caution[Not released yet]
+The first release has not been published, so `uvx mcfortigate` will not resolve
+until it is. Everything documented here describes the server as it currently
+stands; the install line is the one that will work on release day.
+:::
+
+<CardGrid>
+  <Card title="Read-only, structurally" icon="approve-check">
+    Every tool issues `GET` and nothing else, and says so through the MCP
+    `readOnlyHint` annotation. There is no create, update, or delete path in the
+    codebase to disable, misconfigure, or talk a model into reaching.
+    [How that is enforced](/explanation/read-only/).
+  </Card>
+  <Card title="Configuration and live state are different" icon="random">
+    A DHCP-assigned default route is in the live routing table and will never be
+    in the static route configuration. The tools keep the two apart on purpose.
+    [Why it matters](/explanation/config-vs-live/).
+  </Card>
+  <Card title="FortiOS quirks, already handled" icon="warning">
+    Booleans are the strings `"enable"` and `"disable"`, so `bool()` reads every
+    disabled thing as enabled. That one mistake once flipped every route to
+    blackhole. [The full catalogue](/explanation/fortios-quirks/).
+  </Card>
+  <Card title="Several appliances, short aliases" icon="setting">
+    Set `FORTIGATE_TARGETS` and the keys become the `target` argument on every
+    tool. Omit it when only one is configured.
+    [Multi-appliance setup](/guides/several-appliances/).
+  </Card>
+</CardGrid>

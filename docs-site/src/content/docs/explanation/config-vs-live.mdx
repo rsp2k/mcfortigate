@@ -1,0 +1,116 @@
+---
+title: Configuration and live state
+description: The tool surface has two halves that answer different questions. Mixing them up produces answers that are wrong in a way nothing flags.
+---
+
+import ConfigLiveDiagram from '../../../components/ConfigLiveDiagram.astro';
+
+FortiOS exposes two trees, and they answer different questions. The
+configuration tree, `cmdb`, holds what the appliance was told to do. The
+monitor tree holds what it currently observes. The tools keep the distinction
+rather than smoothing it over, because smoothing it over is how you get an
+answer that is wrong and confident at the same time.
+
+<ConfigLiveDiagram />
+
+Configuration persists. It survives a reboot, it changes only when a person
+changes it, and reading it twice an hour apart gives the same answer unless
+somebody did something in between. Live state does none of that. It is an
+observation, it resets, and it is only true at the instant you read it.
+
+## The case that makes it concrete
+
+A DHCP-assigned default route.
+
+`get_routing_table` shows it, because the appliance is genuinely forwarding on
+it right now. `list_static_routes` does not, because nobody configured it —
+there is no static route object to list. Neither tool is broken and neither is
+hiding anything.
+
+Ask *what is the default route on this firewall* and you need the live table.
+Ask *what default route did we configure* and you need the static list. Those
+are different questions that sound almost identical in English, and on a
+dual-WAN box with a failover they can have genuinely different answers.
+
+| Question | Tool | Tree |
+|---|---|---|
+| What routes did we configure | `list_static_routes` | cmdb |
+| What is it forwarding on right now | `get_routing_table` | monitor |
+| What interfaces exist | `list_interfaces` | cmdb |
+| Who is on the network right now | `find_device`, `list_wifi_clients` | monitor |
+| What addresses have we named | `list_address_objects` | cmdb |
+| What addresses are in use | `get_arp_table`, `list_dhcp_leases` | monitor |
+
+## Why live answers need a timestamp in your head
+
+A live answer is a photograph, not a fact. *Kevin's laptop is on the office
+SSID* was true when the call ran, and a laptop that closed its lid thirty
+seconds later is still in the answer you are reading.
+
+This matters most when a model reasons across several calls. Two live reads
+taken a minute apart are two different moments, and a model comparing them will
+happily narrate a change that is really just the passage of time. Two
+configuration reads a minute apart are the same moment for every practical
+purpose.
+
+It matters again when an answer gets pasted into a ticket. Configuration facts
+age in days or weeks. Live facts age in seconds, and a lease table pasted into
+a ticket at 09:14 is documentation of 09:14 and nothing else.
+
+## Fail soft on absence, never on denial
+
+The monitor tree varies by platform and firmware in a way the configuration
+tree does not. A FortiGate with no radios has no `monitor/wifi/client` endpoint
+at all — not an empty one, absent.
+
+So an absent endpoint yields no rows and the tool carries on. That is what lets
+`find_device` work on a wired-only appliance, where one of its three sources
+simply has nothing to contribute, rather than failing the whole question over a
+feature the box does not have.
+
+A *denied* endpoint yields no rows too, and it means the opposite thing.
+
+Those two have to be told apart, and telling them apart is harder than it
+sounds because the client library erases the difference. Its connector does the
+equivalent of `if not response.ok: return []`, so 401, 403, 404, and 500 all
+arrive as an empty list with no exception and no status attached. Every read in
+this server therefore checks status itself and carries it alongside the rows:
+
+| Status | Meaning | Carry on? |
+|---|---|---|
+| `ok` | The endpoint answered | Yes |
+| `unsupported` | HTTP 404 or 405 — the platform does not implement it | Yes, this is a fact about the hardware |
+| `denied` | HTTP 401 or 403 — the token may not read it | No, report it |
+| `error` | Any other status, or a transport failure | No, report it |
+
+Only the first two are safe to treat as *nothing there*. A denial is a fact
+about your credential, not about the network, and degrading quietly turns a
+permissions problem into a wrong answer.
+
+Configuration reads do not degrade at all. A failed cmdb read raises, because a
+missing policy table means something is actually wrong — wrong VDOM, wrong
+permissions, wrong firmware assumption — and returning an empty list there
+would turn a real problem into *there are no policies on this firewall*, which
+is a sentence you never want to read incorrectly.
+
+### Where this bites hardest
+
+`find_references`, which is the tool people use to decide whether deleting
+something is safe.
+
+A token scoped to firewall objects gets 403 on `router/static`. Collapse that
+to an empty list and the tool counts zero references and reports the object as
+safe to delete. The least-privileged token — the one you were right to
+create — is the one most likely to produce the dangerous answer.
+
+So it reports a three-valued `verdict`, names every source it could not read,
+and omits `safe_to_delete` entirely rather than claiming a conclusion it cannot
+support. [The full shape](/reference/tools/#find_references).
+
+## The one tool that spans both
+
+`get_system_status` reads `cmdb/system/global` for identity and
+`monitor/system/status` for uptime, because uptime is not configuration and
+hostname is not an observation. It is the exception that shows where the line
+actually falls: the same appliance, two kinds of fact about it, and they come
+from two different places for a reason.

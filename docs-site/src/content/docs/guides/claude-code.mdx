@@ -1,0 +1,132 @@
+---
+title: Wiring it into Claude Code
+description: Scopes, credential placement, verifying the connection, and running FortiGate questions headlessly from a script.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The one-liner from [getting started](/tutorials/getting-started/) is enough to
+work. This covers the decisions it makes for you.
+
+## Which scope
+
+`claude mcp add` writes the server into one of three places, and the choice
+determines who else gets it and whether your token ends up in git.
+
+```bash
+# local (default) — this project, this machine, not committed
+claude mcp add fortigate \
+  --env FORTIGATE_HOST=fgt.example.com \
+  --env FORTIGATE_TOKEN=your-token \
+  -- uvx mcfortigate
+
+# user — every project on this machine
+claude mcp add fortigate --scope user \
+  --env FORTIGATE_HOST=fgt.example.com \
+  --env FORTIGATE_TOKEN=your-token \
+  -- uvx mcfortigate
+
+# project — written to .mcp.json, which is committed
+claude mcp add fortigate --scope project -- uvx mcfortigate
+```
+
+`--scope user` is right for an appliance you ask about from anywhere, which is
+most of them. A firewall is rarely a property of one repository.
+
+<Aside type="danger" title="Never put the token in project scope">
+`--scope project` writes `.mcp.json` into the repository, and that file gets
+committed. Note that the project-scope example above passes no `--env` at all —
+that is deliberate. Put the credential in the environment instead, and the
+server reads it at startup:
+
+```json
+{
+  "mcpServers": {
+    "fortigate": {
+      "command": "uvx",
+      "args": ["mcfortigate"]
+    }
+  }
+}
+```
+
+```bash
+export FORTIGATE_HOST=fgt.example.com
+export FORTIGATE_TOKEN=your-token
+```
+
+A FortiGate API token in git history is a credential you have to rotate on the
+appliance, not one you can delete.
+</Aside>
+
+## Verifying
+
+```bash
+claude mcp list          # every configured server and its status
+claude mcp get fortigate # this one, including the command and scope
+```
+
+Inside a session, `/mcp` shows connection status and the tools each server
+exposes. A server that connected reports seventeen tools; one that failed
+reports the error.
+
+The server also writes a line to stderr at startup, which Claude Code surfaces
+in the MCP logs:
+
+```
+mcfortigate v2026.9.11 | targets: fgt.example.com
+```
+
+That line is the fastest way to tell a credential problem from a configuration
+problem. If it names your appliance, the environment reached the process and
+anything still failing is between the server and the firewall. If it says
+`targets: none configured`, the environment did not reach the process at all.
+
+## Pinning a version
+
+`uvx mcfortigate` fetches the latest release each time the server starts, which
+is usually what you want. When it is not — a change-freeze window, or
+reproducing a result from last month — pin it:
+
+```bash
+claude mcp add fortigate \
+  --env FORTIGATE_HOST=fgt.example.com \
+  --env FORTIGATE_TOKEN=your-token \
+  -- uvx mcfortigate@2026.9.11
+```
+
+Versions are dates. `2026.9.11` is the release built on 11 September 2026,
+which tells you when it was last tested against a real appliance — a more
+useful fact about a server that talks to vendor firmware than a semantic
+version number would be.
+
+## Asking questions from a script
+
+Claude Code's headless mode turns any of this into something you can run from
+cron or CI. Two flags matter: `-p` auto-denies tools by default, so
+`--allowedTools` is what grants permission.
+
+```bash
+claude -p "List every enabled policy that allows traffic to the internet, \
+  with its source objects and services. Answer as a markdown table." \
+  --allowedTools "mcp__fortigate__*"
+```
+
+The tool naming convention is `mcp__<server-name>__<tool-name>`, so the
+wildcard grants the whole server. To grant a narrower set — a scheduled job
+that should only ever read live state, say:
+
+```bash
+claude -p "How many wireless clients are connected, by SSID?" \
+  --allowedTools "mcp__fortigate__list_wifi_clients"
+```
+
+Without `--allowedTools`, every tool call is auto-denied and the model answers
+that it has no access, which looks exactly like a broken server.
+
+## Several appliances
+
+Set `FORTIGATE_TARGETS` instead of `FORTIGATE_HOST` and the aliases become the
+`target` argument on every tool. [The multi-appliance
+guide](/guides/several-appliances/) covers the whole pattern, including what to
+do about the JSON quoting, which is the part that bites.

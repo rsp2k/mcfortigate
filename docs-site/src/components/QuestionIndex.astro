@@ -1,0 +1,116 @@
+---
+/**
+ * The homepage's index of operator questions.
+ *
+ * The tool surface is deliberately shaped around what someone standing in
+ * front of a firewall actually wants to know, so the index is too: you scan
+ * for your question, not for an endpoint name.
+ */
+const questions: { ask: string; tool: string; note?: string }[] = [
+  { ask: 'What is 192.168.1.47?', tool: 'find_device', note: 'wifi + DHCP + ARP, joined' },
+  { ask: 'Is this address object safe to delete?', tool: 'find_references', note: 'five lookups, one verdict' },
+  { ask: 'Where does 10.20.30.0/24 appear?', tool: 'search_config', note: 'every object type at once' },
+  { ask: 'What does this ruleset actually allow?', tool: 'list_policies', note: 'in evaluation order' },
+  { ask: 'Is Kevin’s laptop on the network?', tool: 'find_device' },
+  { ask: 'What VLANs exist, and on which ports?', tool: 'list_vlans' },
+  { ask: 'Which routes are live right now?', tool: 'get_routing_table', note: 'not the same as configured' },
+  { ask: 'What is this box, and what is it running?', tool: 'get_system_status' },
+];
+---
+
+<ul class="qi">
+  {
+    questions.map(({ ask, tool, note }) => (
+      <li>
+        <a href={`/reference/tools/#${tool}`}>
+          <span class="qi-ask">{ask}</span>
+          <span class="qi-meta">
+            <code>{tool}</code>
+            {note && <span class="qi-note">{note}</span>}
+          </span>
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .qi {
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0 0;
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 50rem) {
+    .qi {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .qi li {
+    margin: 0;
+  }
+
+  .qi a {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    height: 100%;
+    padding: 0.9rem 1rem 0.9rem 1.1rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-left: 3px solid var(--sl-color-gray-4);
+    border-radius: 0.35rem;
+    text-decoration: none;
+    background: var(--sl-color-black);
+    transition:
+      border-color 120ms ease,
+      transform 120ms ease;
+  }
+
+  .qi a:hover,
+  .qi a:focus-visible {
+    border-color: var(--sl-color-accent);
+    border-left-color: var(--sl-color-accent);
+    transform: translateX(2px);
+  }
+
+  /* Honour a reduced-motion preference: keep the colour cue, drop the slide. */
+  @media (prefers-reduced-motion: reduce) {
+    .qi a {
+      transition: border-color 120ms ease;
+    }
+    .qi a:hover,
+    .qi a:focus-visible {
+      transform: none;
+    }
+  }
+
+  .qi-ask {
+    color: var(--sl-color-white);
+    font-size: var(--sl-text-base);
+    line-height: 1.35;
+  }
+
+  .qi-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+  }
+
+  .qi-meta code {
+    font-family: var(--sl-font-mono, ui-monospace, monospace);
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-accent-high);
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  .qi-note {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+</style>

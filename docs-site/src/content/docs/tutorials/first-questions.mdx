@@ -1,0 +1,135 @@
+---
+title: Three questions worth asking first
+description: A guided tour of what the tools are actually good at, through three questions that each exercise a different part of the surface.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+You have it connected. These three questions are the ones worth asking first,
+not because they are impressive but because each one exercises a different part
+of the tool surface, and together they show you where the seams are.
+
+Ask them of a lab appliance the first time through.
+
+## "What is on this firewall?"
+
+Start wide. Ask the model to describe the appliance and its network:
+
+> Give me an overview of this firewall — what it is, what interfaces it has,
+> and what VLANs are configured.
+
+Three calls happen: `get_system_status`, `list_interfaces`, and `list_vlans`.
+
+Two things in the answer are worth looking at closely.
+
+The interface list is shorter than the one in the web UI. FortiOS generates
+bookkeeping interfaces alongside real ones — a quarantine interface for every
+wireless VAP, an SSL-VPN tunnel root — and those are hidden, with a count of
+how many under `hidden_internal`. If you want them, ask for internal interfaces
+to be included and the model passes `include_internal`.
+
+The interface addresses are host addresses, not networks. An interface reported
+as `10.20.30.1/24` really does have `.1` on it. That sounds too obvious to
+mention until you know that FortiOS writes an interface address and a subnet
+object in the identical format, and that
+[collapsing one of them to its network](/explanation/fortios-quirks/#the-same-format-means-two-things)
+is a mistake with no symptom.
+
+## "What is 192.168.1.47?"
+
+Pick an address you can see on the network and ask who has it. On a lab box,
+find one first with *show me the current DHCP leases*.
+
+> What is 10.20.30.84?
+
+This is `find_device`, and it is the tool that shows most clearly why the
+surface is shaped the way it is. One call reads three FortiOS endpoints — the
+wireless client list, the DHCP lease table, and the ARP table — and merges them
+by MAC into one record:
+
+```json
+{
+  "mac": "aa:bb:cc:dd:ee:01",
+  "seen_in": ["dhcp", "arp", "wifi"],
+  "ip": "10.20.30.84",
+  "hostname": "kevins-laptop",
+  "interface": "vlan30",
+  "ssid": "office",
+  "signal_dbm": -54,
+  "wireless": true
+}
+```
+
+`seen_in` is the field to read first. A device in all three is a wireless
+client with a lease that the appliance is actively talking to. A device in
+`arp` only is statically addressed, or its lease came from a DHCP server that
+is not this firewall — either way, it is present and the appliance knows about
+it.
+
+The join is by MAC, and the three endpoints disagree about MAC casing. That is
+why the tool exists rather than the model doing it: a naive comparison across
+those endpoints matches nothing and quietly returns three partial records that
+look like three separate devices.
+
+<Aside type="tip" title="This answer is a photograph">
+Everything here is live state. It was true when the call ran. A laptop that
+closed its lid ten seconds later is still in your answer, and a lease table
+pasted into a ticket is documentation of one instant.
+[Why the two halves are kept apart](/explanation/config-vs-live/).
+</Aside>
+
+## "Is this object safe to delete?"
+
+Pick an address object from `list_address_objects` and ask:
+
+> Is the address object DMZ-SERVERS safe to delete?
+
+This is `find_references`, and it is the question that precedes every
+configuration change on a firewall. One call, five REST reads behind it:
+policies on both the address and the service side, address group and service
+group membership, virtual IPs, and static routes.
+
+```json
+{
+  "object": "DMZ-SERVERS",
+  "verdict": "referenced",
+  "total_references": 3,
+  "sources_checked": {
+    "policies": "ok", "address_groups": "ok", "service_groups": "ok",
+    "vips": "ok", "routes": "ok"
+  },
+  "safe_to_delete": false,
+  "policies": [
+    { "id": 9, "name": "block-legacy-smb", "enabled": true, "action": "deny", "referenced_as": ["destination"] },
+    { "id": 12, "name": "dmz-mgmt", "enabled": false, "action": "accept", "referenced_as": ["destination", "source"] }
+  ],
+  "groups": [{ "name": "ALL-SERVERS", "kind": "address_group" }],
+  "vips": [],
+  "routes": []
+}
+```
+
+Notice policy 12: it is disabled. It still counts as a reference, because a
+disabled policy is a policy somebody intends to turn back on, and deleting the
+object it points at turns re-enabling it into a surprise.
+
+Now look at `sources_checked`, which is the field that makes this tool
+trustworthy. If your read-only profile is scoped tightly — and it should be —
+one of those five may come back `denied: http=403`. When that happens the
+verdict is `indeterminate` and `safe_to_delete` is **absent entirely** rather
+than `false`, because a table nobody could read cannot support a claim that
+nothing references the object.
+
+That is worth trying deliberately at least once, since it is the normal outcome
+for a correctly least-privileged token rather than an error.
+[What to do with an indeterminate answer](/guides/before-you-delete/#when-the-answer-is-indeterminate).
+
+## Where to go next
+
+You have now used all three kinds of tool: a configuration read, a live-state
+read, and a cross-referencing read.
+
+[Reading a ruleset](/guides/read-a-ruleset/) is the next thing most people
+want, and it is the one where evaluation order starts to matter. The
+[tool reference](/reference/tools/) is the complete surface when you want to
+know what else is there.

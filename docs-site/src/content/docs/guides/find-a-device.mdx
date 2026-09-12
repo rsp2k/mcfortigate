@@ -1,0 +1,132 @@
+---
+title: Finding a device on the network
+description: Identifying a MAC, an IP, or a half-remembered hostname, and what to do when the obvious lookup comes back empty.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Somebody gives you an IP address and asks what it is. Or a MAC from a log line.
+Or *Kevin's laptop, I think it's called something with a K*.
+
+`find_device` takes all three.
+
+> What is 10.20.30.84?
+
+> Who has aa:bb:cc:dd:ee:01?
+
+> Is Kevin's laptop on the network?
+
+Matching is case-insensitive and substring-based, so a partial MAC, a bare
+hostname prefix, and a full IP all work against the same argument.
+
+## What it does behind the question
+
+Three FortiOS monitor endpoints, read together and merged by MAC: the wireless
+client list, the DHCP lease table, and the ARP table.
+
+```json
+{
+  "mac": "aa:bb:cc:dd:ee:01",
+  "seen_in": ["dhcp", "arp", "wifi"],
+  "ip": "10.20.30.84",
+  "hostname": "kevins-laptop",
+  "interface": "vlan30",
+  "lease_expires": 1789000000,
+  "ssid": "office",
+  "signal_dbm": -54,
+  "wireless": true
+}
+```
+
+Read `seen_in` first — it tells you what kind of device you are looking at
+before you read anything else.
+
+| `seen_in` | What it means |
+|---|---|
+| `dhcp`, `arp`, `wifi` | Wireless client with a lease, actively talking |
+| `dhcp`, `arp` | Wired client with a lease, actively talking |
+| `arp` only | Statically addressed, or leased by a different DHCP server |
+| `dhcp` only | Holds a lease but is not currently being talked to — likely gone, lease not yet expired |
+| `wifi` only | Associated to the radio but has not obtained an address |
+
+That last row is the useful one for a support call. *Connected to the wifi but
+no internet* looks identical to the user whether the problem is association or
+addressing, and `wifi` with no `dhcp` says immediately that the radio is fine
+and DHCP is not.
+
+## Once a MAC matches, everything about it comes back
+
+The matching rule is worth understanding, because it is what makes partial
+information useful.
+
+A query matches against MAC, IP, and hostname in each source. But once a MAC
+has matched *anywhere*, the other two sources contribute their fields for that
+MAC whether or not the query itself matched there.
+
+That is the entire point. The wireless endpoint frequently knows a MAC and a
+signal strength and nothing else — no hostname, sometimes no IP. Search for a
+hostname, match it in the DHCP table, and the wireless data attaches itself to
+the result. Search for a MAC seen only on the radio, and the lease table
+supplies the name.
+
+## When nothing comes back
+
+An empty result is information, and there are four ordinary explanations.
+
+**The device is genuinely gone.** Everything here is live state, true only at
+the moment of the call. Ten minutes ago is not now.
+
+**It is behind a switch that does the DHCP.** If a downstream device serves
+DHCP, the FortiGate never sees a lease. Try `get_arp_table` directly — if the
+firewall has ever routed for the device, it is in ARP even without a lease.
+
+**It is on a VLAN the firewall does not route for.** No routing, no ARP entry,
+no visibility. The firewall cannot tell you about traffic that never reaches
+it.
+
+**The appliance has no radios.** `monitor/wifi/client` does not exist on a
+wired-only FortiGate, and an absent endpoint
+[yields no rows rather than an error](/explanation/config-vs-live/#fail-soft-on-absence-never-on-denial).
+Wireless questions against such a box return nothing, and correctly so.
+
+What an empty result never means is *the token was refused*. A denied read is
+reported as a denial rather than passed off as emptiness, so if you are seeing
+nothing, the appliance really is seeing nothing.
+
+## Widening the search
+
+When the direct lookup is empty, go broader before concluding the device is not
+there.
+
+Ask for the whole lease table filtered by hostname fragment — `list_dhcp_leases`
+takes `hostname_contains`, and a device named `KEV-LT-01` will not match a
+search for `kevin` but will match `kev`.
+
+Ask for the ARP table on the interface you expect it on. `get_arp_table` with
+an `interface` argument is a short list you can read by eye, and an unfamiliar
+MAC in it is often the thing you were looking for under a name nobody
+recognizes.
+
+Ask for the whole wireless client list. `list_wifi_clients` with no filter is
+every associated device including the ones with no hostname, which is where
+phones and IoT devices live.
+
+<Aside type="tip" title="Hostnames come from the client">
+A DHCP hostname is whatever the device chose to send. Phones send a name the
+owner set, laptops send their computer name, and plenty of devices send nothing
+at all — in which case the vendor class identifier is used instead, which
+identifies the *kind* of device rather than the device. An unnamed entry is
+normal, not a fault.
+</Aside>
+
+## Going the other way
+
+Sometimes you have the device and want its place in the configuration.
+`find_device` gives you an IP; `search_config` takes it from there.
+
+> What is 10.20.30.84, and is that address referenced anywhere in the config?
+
+Two calls. The first identifies the device, the second finds every address
+object, group, policy, and route that mentions the address — which is how you
+get from *a device is doing something odd* to *here is the rule that governs
+it*.

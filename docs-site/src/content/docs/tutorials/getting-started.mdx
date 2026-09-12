@@ -1,0 +1,201 @@
+---
+title: Getting started
+description: Create a read-only API admin on the FortiGate, wire mcfortigate into your MCP client, and confirm it can see the appliance.
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+By the end of this you will have a read-only API admin on a FortiGate, an MCP
+client that can reach it, and an answer back from the appliance confirming the
+whole path works.
+
+Roughly ten minutes, most of it on the firewall.
+
+## What you need
+
+A FortiGate running FortiOS 6.4 or later, administrative access to it, and a
+machine that can reach its management interface. You also need
+[uv](https://docs.astral.sh/uv/) installed, which is what `uvx` comes from.
+
+<Steps>
+
+1. ### Create a read-only admin profile
+
+   The API user needs a profile, and the built-in ones grant more than this
+   server can use. Make one that grants read and nothing else.
+
+   In the web UI: **System > Admin Profiles > Create New**. Name it
+   `readonly-api` and set every permission group you care about to **Read**.
+   The groups that matter are System, Network, Firewall, and — if the
+   appliance has radios — WiFi & Switch Controller.
+
+   From the CLI, which is faster and less error-prone:
+
+   ```
+   config system accprofile
+       edit "readonly-api"
+           set secfabgrp read
+           set ftviewgrp read
+           set authgrp read
+           set sysgrp read
+           set netgrp read
+           set loggrp read
+           set fwgrp read
+           set vpngrp read
+           set utmgrp read
+           set wifi read
+       next
+   end
+   ```
+
+2. ### Create the REST API admin
+
+   **System > Administrators > Create New > REST API Admin**.
+
+   Give it a username, set **Administrator Profile** to `readonly-api`, leave
+   **PKI Group** disabled, and set **Trusted Hosts** to the address of the
+   machine that will run the server.
+
+   <Aside type="caution" title="Trusted hosts is the control that matters">
+   A FortiGate API token is a bearer credential: anything holding it *is* that
+   admin. Trusted hosts is what makes a leaked token useless from anywhere but
+   one address. Do not skip it, and do not set it to `0.0.0.0/0` to get past
+   an error.
+   </Aside>
+
+   The CLI form, with the trusted host set to the machine you will run from:
+
+   ```
+   config system api-user
+       edit "mcp-readonly"
+           set accprofile "readonly-api"
+           set vdom "root"
+           config trusthost
+               edit 1
+                   set ipv4-trusthost 192.0.2.10 255.255.255.255
+               next
+           end
+       next
+   end
+   ```
+
+3. ### Generate the token
+
+   Saving the API admin in the web UI shows the token once, in a dialog. There
+   is no way to retrieve it afterwards — you generate a new one instead — so
+   copy it somewhere before closing.
+
+   From the CLI:
+
+   ```
+   execute api-user generate-key mcp-readonly
+   ```
+
+4. ### Check it from the command line first
+
+   Before involving an MCP client, confirm the credential works. This is the
+   step that separates *the token is wrong* from *the client configuration is
+   wrong*, and doing it now saves a confusing half hour later.
+
+   ```bash
+   curl -sk "https://fgt.example.com/api/v2/cmdb/system/global?access_token=YOUR_TOKEN" \
+     | head -c 200
+   ```
+
+   A JSON body with `"status": "success"` means the token, the trusted host,
+   and the profile are all correct. HTTP 401 means the token is wrong or the
+   source address is not in the trusted hosts list.
+
+5. ### Add the server to your MCP client
+
+   <Aside type="caution" title="Not released yet">
+   The first release has not been published, so `uvx mcfortigate` will not
+   resolve until it is. Until then, run it from a checkout: point the client's
+   command at `uv run --directory /path/to/mcfortigate mcfortigate` instead.
+   </Aside>
+
+   <Tabs>
+   <TabItem label="Claude Code">
+
+   ```bash
+   claude mcp add fortigate \
+     --env FORTIGATE_HOST=fgt.example.com \
+     --env FORTIGATE_TOKEN=your-token \
+     -- uvx mcfortigate
+   ```
+
+   </TabItem>
+   <TabItem label="Claude Desktop">
+
+   In `claude_desktop_config.json`:
+
+   ```json
+   {
+     "mcpServers": {
+       "fortigate": {
+         "command": "uvx",
+         "args": ["mcfortigate"],
+         "env": {
+           "FORTIGATE_HOST": "fgt.example.com",
+           "FORTIGATE_TOKEN": "your-token"
+         }
+       }
+     }
+   }
+   ```
+
+   </TabItem>
+   <TabItem label="Any MCP client">
+
+   The server runs over stdio. The command is `uvx mcfortigate`, and
+   configuration arrives entirely through the environment:
+
+   ```bash
+   FORTIGATE_HOST=fgt.example.com FORTIGATE_TOKEN=your-token uvx mcfortigate
+   ```
+
+   </TabItem>
+   </Tabs>
+
+   `uvx` fetches and runs the package without installing it anywhere
+   permanent, so there is no virtualenv to manage and upgrades are automatic.
+
+6. ### Ask it something
+
+   Restart the client so it picks up the new server, then ask:
+
+   > What FortiGates can you reach?
+
+   The model calls `list_targets` and reports one appliance with its URL, VDOM,
+   and auth mode. No credentials come back — they never leave the server
+   process.
+
+   Then ask for the appliance itself:
+
+   > What model and firmware is it running?
+
+   That is `get_system_status`, and a serial number in the answer means the
+   whole path works, because the serial comes from a part of the FortiOS
+   response that a broken read would have thrown away.
+
+</Steps>
+
+## If something did not work
+
+A client that shows the server as failed usually has a configuration error
+rather than a connection problem. The server prints its version and its
+configured targets to stderr at startup, and clients that surface server logs
+will show it:
+
+```
+mcfortigate v2026.9.11 | targets: fgt.example.com
+```
+
+If that line says `targets: none configured`, the environment variables did not
+reach the process, which is a client configuration problem rather than a
+FortiGate one. [Troubleshooting](/guides/troubleshooting/) covers the rest.
+
+## Next
+
+[Three questions worth asking first](/tutorials/first-questions/) walks through
+what the tools are actually good at, using a real appliance.
