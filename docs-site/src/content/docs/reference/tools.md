@@ -68,12 +68,31 @@ hostname, and current load.
   "target": "lab",
   "url": "https://fgt-edge1.example.com",
   "hostname": "fgt-edge1",
-  "serial": "FGT60FTK00000000",
+  "model": "FortiWiFi 61E",
+  "serial": "FWF61ETK00000000",
   "version": "v7.0.14",
   "build": 601,
-  "vdom": "root"
+  "vdom": "root",
+  "runtime_status": "ok",
+  "model_number": "61E",
+  "log_disk": "available",
+  "cpu_percent": 4,
+  "memory_percent": 41,
+  "sessions": 87
 }
 ```
+
+| Field | Always | Meaning |
+|---|---|---|
+| `target`, `url`, `vdom` | yes | Which appliance answered, and the scope |
+| `hostname` | yes | From the monitor tree, falling back to the configuration |
+| `model` | yes | `model_name`, falling back to `model` |
+| `serial`, `version`, `build` | yes | From the response envelope |
+| `runtime_status` | yes | Status of the `monitor/system/status` read |
+| `alias`, `timezone`, `model_number`, `log_disk` | no | Present only when reported |
+| `cpu_percent`, `memory_percent`, `sessions` | no | Current load, present only when reported |
+| `uptime_seconds` | no | Present only on firmware that carries it |
+| `load_status` | no | Present only when the load read failed |
 
 The serial, version, and build come from the *envelope* of the cmdb response
 rather than from `results`. FortiOS puts them as siblings of `results` on every
@@ -81,15 +100,38 @@ cmdb call, and any helper that unwraps straight to `results` throws them away,
 which is why the serial looks absent from the API until you read the raw
 response. See [identity lives in the envelope](/explanation/fortios-quirks/#identity-lives-in-the-envelope).
 
-**Fields a given firmware does not report are omitted rather than returned as
-null**, so an absent key means the appliance did not offer the value — not that
-the value is zero or unknown-but-present. FortiOS 7.0.14, for instance, reports
-no uptime anywhere in its monitor tree, so there is no `uptime` key on that
-firmware rather than an `uptime` of `null`.
+#### Absent fields are omitted, not null
 
-That convention matters more here than elsewhere, because this is the tool
-people use to confirm the connection works at all, and a `null` would read as
-*something went wrong* when the truth is *this model does not measure that*.
+An absent key means the appliance did not offer the value, rather than the
+value being zero or unknown-but-present.
+
+That distinction was settled the expensive way. `uptime_seconds` was documented
+and returned for weeks as a permanent `null`, which read like a parsing bug.
+Probing a FortiWiFi-61E on FortiOS 7.0.14 found it is not a bug at all —
+**that firmware reports no uptime anywhere**:
+
+| Endpoint | What it returns | Uptime? |
+|---|---|---|
+| `monitor/system/status` | `hostname`, `model`, `model_name`, `model_number`, `log_disk_status` | no |
+| `monitor/system/resource/usage` | `cpu`, `mem`, `disk`, `session`, `setuprate`, lograte counters | no |
+| `monitor/system/time` | `time`, as epoch seconds | no, that is wall clock |
+
+The lookup is kept because newer firmware does carry it, so the key appears
+where it exists and is absent where it does not.
+
+There is one trap in reading this shape, and it is worth stating because it is
+easy to reintroduce: **filter on `is not None`, never on truthiness**. A
+genuinely idle appliance reports `cpu_percent: 0`, and a truthiness filter
+discards that as though the appliance never answered.
+
+#### Two reasons a load figure can be missing
+
+`runtime_status` and `load_status` exist to separate them. A firmware that does
+not implement the endpoint and a token that is not allowed to read it both
+produce no numbers, and they call for completely different responses from you.
+`load_status` appears only in the second case, carrying the reason —
+`denied: http=403`, say. See [fail soft on absence, never on
+denial](/explanation/config-vs-live/#fail-soft-on-absence-never-on-denial).
 
 ### `search_config`
 
