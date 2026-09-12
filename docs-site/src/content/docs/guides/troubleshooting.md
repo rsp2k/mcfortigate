@@ -13,7 +13,7 @@ The server writes one line to stderr when it starts, and it answers the first
 question worth asking:
 
 ```
-mcfortigate v2026.9.12 | targets: fgt.example.com
+mcfortigate v2026.9.12.1 | targets: fgt.example.com
 ```
 
 If that names your appliance, the environment reached the process. Everything
@@ -47,7 +47,7 @@ is stale.
 Restart the client, or restart the server from within it, and check the banner:
 
 ```
-mcfortigate v2026.9.12 | targets: fgt.example.com
+mcfortigate v2026.9.12.1 | targets: fgt.example.com
 ```
 
 That version is the resolved one, not the one you meant to install. If it reads
@@ -76,6 +76,22 @@ claude mcp add fortigate \
 **The package could not be fetched.** `uvx` downloads on first run, so a
 machine with no route to PyPI fails at startup. `uvx mcfortigate --help` in a
 terminal tells you which it is.
+
+**A brand-new release reports `no version of mcfortigate`.** If a version was
+published within the last minute or so, this is propagation rather than a bad
+upload, and `--refresh` does not help. PyPI's simple index carries the new files
+before its JSON API does, and installers read the JSON-backed path — so the
+release is genuinely there and genuinely not yet resolvable. Wait a minute and
+retry unchanged.
+
+To tell the two apart, ask the index that updates first:
+
+```bash
+curl -s https://pypi.org/simple/mcfortigate/ | grep -o 'mcfortigate-[0-9.]*'
+```
+
+If your version is listed there, it exists and you are waiting on propagation.
+If it is not, the upload did not land.
 
 ## `targets: none configured`
 
