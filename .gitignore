@@ -25,6 +25,12 @@ uv.lock
 .env.local
 .mcp.json
 
+# Operator notes. Holds live lab and infrastructure detail — dell01's interface
+# layout, the lab segment, MACs, the production gateway — and this repo now has
+# a public GitHub remote alongside the private Gitea one. It has never been
+# tracked; this keeps a stray `git add -A` from changing that.
+CLAUDE.md
+
 # Local scratch
 /local/
 /artifacts/

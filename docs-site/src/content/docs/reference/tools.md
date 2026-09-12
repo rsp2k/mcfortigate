@@ -431,9 +431,19 @@ several. Asking about the address `all` on the same appliance returns
 `dstaddr` — while `policies` holds a single entry with
 `referenced_as: ["source", "destination"]`.
 
-Neither is wrong. The reference list counts places a reference appears; the
-detail list counts objects that hold one. Compare them and it looks like a
-discrepancy, so do not.
+Neither is more correct. The reference list counts the **sites** a reference
+appears at; the detail lists count the **objects** that hold one. They measure
+different things, so comparing them looks like a discrepancy when it is not.
+
+Which to reach for depends on the question. Use `references` and
+`total_references` when reporting what has to be changed before a delete — two
+fields on one policy are two edits. Use `policies`, `groups`, `vips`, and
+`routes` when naming what an operator has to go and open, since that same
+policy is one thing to open.
+
+Resist the urge to make the two numbers agree. Collapsing sites hides that two
+separate fields need changing; expanding objects lists the same policy twice
+for someone who only needs to open it once. Both directions lose information.
 :::
 
 #### The verdict
@@ -474,11 +484,15 @@ The `note` field says so in as many words.
 | `note` | no | Present on the other three verdicts, explaining the limit |
 
 `sources_checked` carries nine keys. Five are the detail scan — `policies`,
-`address_groups`, `service_groups`, `vips`, `routes`. Three are the reads that
-work out what kind of object the name is — `addresses`, `services`,
+`address_groups`, `service_groups`, `vips`, `routes`. Three more come from
+working out what kind of object the name is — `addresses`, `services`,
 `interfaces` — which has to happen before the usage lookup can be asked
 correctly. The last is `object_usage`, the authoritative lookup itself, and it
 is the one whose failure downgrades the verdict.
+
+Nine rather than fourteen, because kind resolution also needs the address
+group, service group, and VIP tables, and those are shared with the detail
+scan. They are read once and reported once.
 
 `referenced_as` inside `policies` names the field the object appeared in, so a
 policy listing it as both source and destination reports both rather than being
