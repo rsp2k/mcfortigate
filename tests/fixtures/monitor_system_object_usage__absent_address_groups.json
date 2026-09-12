@@ -1,0 +1,370 @@
+{
+ "http_method": "GET",
+ "results": {
+  "can_use": [
+   {
+    "path": "firewall",
+    "name": "addrgrp",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "addrgrp",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "internet-service-extension",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "internet-service-custom",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-address",
+    "range": "vdom"
+   },
+   {
+    "path": "web-proxy",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "web-proxy",
+    "name": "global",
+    "range": "vdom"
+   },
+   {
+    "path": "web-proxy",
+    "name": "explicit",
+    "range": "vdom"
+   },
+   {
+    "path": "web-proxy",
+    "name": "explicit",
+    "range": "vdom"
+   },
+   {
+    "path": "icap",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "quarantine",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "security-exempt-list",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "security-exempt-list",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl.web",
+    "name": "portal",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl.web",
+    "name": "portal",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl",
+    "name": "settings",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl",
+    "name": "settings",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl",
+    "name": "settings",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase2",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase2",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase2-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase2-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "vip",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "access-proxy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "access-proxy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "ssl-ssh-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "waf",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "waf",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "waf",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "waf",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "waf",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "waf",
+    "name": "profile",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "security-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "security-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "shaping-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "shaping-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "local-in-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "local-in-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "ttl-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "multicast-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "interface-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "interface-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "DoS-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "DoS-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "central-snat-map",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "central-snat-map",
+    "range": "vdom"
+   },
+   {
+    "path": "authentication",
+    "name": "rule",
+    "range": "vdom"
+   },
+   {
+    "path": "authentication",
+    "name": "rule",
+    "range": "vdom"
+   },
+   {
+    "path": "authentication",
+    "name": "setting",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "static",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "policy",
+    "range": "vdom"
+   }
+  ],
+  "currently_using": [],
+  "q_types": [
+   33
+  ]
+ },
+ "vdom": "root",
+ "path": "system",
+ "name": "object",
+ "action": "usage",
+ "mkey": "__mcfortigate_absent__",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

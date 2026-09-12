@@ -1,0 +1,45 @@
+{
+ "http_method": "GET",
+ "results": {
+  "can_use": [
+   {
+    "path": "firewall",
+    "name": "vipgrp",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "access-proxy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "security-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-policy",
+    "range": "vdom"
+   }
+  ],
+  "currently_using": [],
+  "q_types": [
+   42
+  ]
+ },
+ "vdom": "root",
+ "path": "system",
+ "name": "object",
+ "action": "usage",
+ "mkey": "__mcfortigate_absent__",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

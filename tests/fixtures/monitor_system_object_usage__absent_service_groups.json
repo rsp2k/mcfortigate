@@ -1,0 +1,105 @@
+{
+ "http_method": "GET",
+ "results": {
+  "can_use": [
+   {
+    "path": "firewall.service",
+    "name": "group",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "security-exempt-list",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "vip",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "security-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "shaping-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "local-in-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "local-in-policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "ttl-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "interface-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "interface-policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "DoS-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "DoS-policy6",
+    "range": "vdom"
+   }
+  ],
+  "currently_using": [],
+  "q_types": [
+   37
+  ]
+ },
+ "vdom": "root",
+ "path": "system",
+ "name": "object",
+ "action": "usage",
+ "mkey": "__mcfortigate_absent__",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

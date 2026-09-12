@@ -1,0 +1,137 @@
+{
+ "http_method": "GET",
+ "size": 4,
+ "matched_count": 4,
+ "next_idx": 3,
+ "revision": "00000000000000000000000000000000",
+ "results": [
+  {
+   "name": "Email Access",
+   "q_origin_key": "Email Access",
+   "proxy": "disable",
+   "member": [
+    {
+     "name": "DNS",
+     "q_origin_key": "DNS"
+    },
+    {
+     "name": "IMAP",
+     "q_origin_key": "IMAP"
+    },
+    {
+     "name": "IMAPS",
+     "q_origin_key": "IMAPS"
+    },
+    {
+     "name": "POP3",
+     "q_origin_key": "POP3"
+    },
+    {
+     "name": "POP3S",
+     "q_origin_key": "POP3S"
+    },
+    {
+     "name": "SMTP",
+     "q_origin_key": "SMTP"
+    },
+    {
+     "name": "SMTPS",
+     "q_origin_key": "SMTPS"
+    }
+   ],
+   "comment": "",
+   "color": 0,
+   "fabric-object": "disable"
+  },
+  {
+   "name": "Exchange Server",
+   "q_origin_key": "Exchange Server",
+   "proxy": "disable",
+   "member": [
+    {
+     "name": "DCE-RPC",
+     "q_origin_key": "DCE-RPC"
+    },
+    {
+     "name": "DNS",
+     "q_origin_key": "DNS"
+    },
+    {
+     "name": "HTTPS",
+     "q_origin_key": "HTTPS"
+    }
+   ],
+   "comment": "",
+   "color": 0,
+   "fabric-object": "disable"
+  },
+  {
+   "name": "Web Access",
+   "q_origin_key": "Web Access",
+   "proxy": "disable",
+   "member": [
+    {
+     "name": "DNS",
+     "q_origin_key": "DNS"
+    },
+    {
+     "name": "HTTP",
+     "q_origin_key": "HTTP"
+    },
+    {
+     "name": "HTTPS",
+     "q_origin_key": "HTTPS"
+    }
+   ],
+   "comment": "",
+   "color": 0,
+   "fabric-object": "disable"
+  },
+  {
+   "name": "Windows AD",
+   "q_origin_key": "Windows AD",
+   "proxy": "disable",
+   "member": [
+    {
+     "name": "DCE-RPC",
+     "q_origin_key": "DCE-RPC"
+    },
+    {
+     "name": "DNS",
+     "q_origin_key": "DNS"
+    },
+    {
+     "name": "KERBEROS",
+     "q_origin_key": "KERBEROS"
+    },
+    {
+     "name": "LDAP",
+     "q_origin_key": "LDAP"
+    },
+    {
+     "name": "LDAP_UDP",
+     "q_origin_key": "LDAP_UDP"
+    },
+    {
+     "name": "SAMBA",
+     "q_origin_key": "SAMBA"
+    },
+    {
+     "name": "SMB",
+     "q_origin_key": "SMB"
+    }
+   ],
+   "comment": "",
+   "color": 0,
+   "fabric-object": "disable"
+  }
+ ],
+ "vdom": "root",
+ "path": "firewall.service",
+ "name": "group",
+ "status": "success",
+ "http_status": 200,
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

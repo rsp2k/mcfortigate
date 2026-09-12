@@ -1,0 +1,16 @@
+{
+ "http_method": "GET",
+ "size": 0,
+ "matched_count": 0,
+ "next_idx": 0,
+ "revision": "00000000000000000000000000000000",
+ "results": [],
+ "vdom": "root",
+ "path": "firewall",
+ "name": "vip",
+ "status": "success",
+ "http_status": 200,
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}
