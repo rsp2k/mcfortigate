@@ -27,6 +27,7 @@ from mcfortigate.client import (
 )
 from mcfortigate.config import TargetRegistry
 from mcfortigate.fortios import normalize_mac
+from mcfortigate.paging import paginate
 
 
 def _index_by_mac(result: MonitorResult) -> dict[str, dict[str, Any]]:
@@ -53,7 +54,12 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
     """Attach the live-state tools to the server."""
 
     @mcp.tool(annotations=read_only("List connected wireless clients"))
-    def list_wifi_clients(target: str | None = None, ssid: str | None = None) -> dict[str, Any]:
+    def list_wifi_clients(
+        target: str | None = None,
+        ssid: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """List wireless clients currently associated, enriched with DHCP and ARP.
 
         Each client is joined against the DHCP lease and ARP tables by MAC, which
@@ -68,6 +74,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
             ssid: Keep only clients associated to this SSID.
+            limit: Maximum rows to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -105,10 +113,11 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 entry["authenticated"] = auth == "pass"
             results.append(entry)
 
+        window, paging = paginate(results, limit, offset)
         response: dict[str, Any] = {
             "target": fgt.name,
-            "count": len(results),
-            "clients": results,
+            **paging,
+            "clients": window,
             "sources_checked": _source_report(sources),
         }
         blocked = _unusable(sources)
@@ -124,6 +133,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         target: str | None = None,
         interface: str | None = None,
         hostname_contains: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> dict[str, Any]:
         """List current DHCP leases issued by the appliance.
 
@@ -131,6 +142,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             target: Which FortiGate to query. Optional when only one is configured.
             interface: Keep only leases issued on this interface.
             hostname_contains: Case-insensitive substring filter on the hostname.
+            limit: Maximum rows to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -155,10 +168,11 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 }
             )
 
+        window, paging = paginate(results, limit, offset)
         response: dict[str, Any] = {
             "target": fgt.name,
-            "count": len(results),
-            "leases": results,
+            **paging,
+            "leases": window,
             "source_status": monitor.describe(),
         }
         if not monitor.usable:
@@ -166,7 +180,12 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         return response
 
     @mcp.tool(annotations=read_only("Show the ARP table"))
-    def get_arp_table(target: str | None = None, interface: str | None = None) -> dict[str, Any]:
+    def get_arp_table(
+        target: str | None = None,
+        interface: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """Show the ARP table, which is the IP-to-MAC bindings the appliance sees.
 
         ARP catches devices DHCP does not, meaning anything with a static
@@ -176,6 +195,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
             interface: Keep only entries learned on this interface.
+            limit: Maximum rows to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -191,10 +212,11 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             for entry in monitor.rows
             if not interface or entry.get("interface") == interface
         ]
+        window, paging = paginate(results, limit, offset)
         response: dict[str, Any] = {
             "target": fgt.name,
-            "count": len(results),
-            "entries": results,
+            **paging,
+            "entries": window,
             "source_status": monitor.describe(),
         }
         if not monitor.usable:

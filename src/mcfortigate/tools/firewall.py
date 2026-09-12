@@ -29,6 +29,7 @@ from mcfortigate.fortios import (
     summarize_policy,
     summarize_service,
 )
+from mcfortigate.paging import paginate
 
 
 def _matches(haystack: str, needle: str | None) -> bool:
@@ -44,6 +45,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         target: str | None = None,
         name_contains: str | None = None,
         address_type: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> dict[str, Any]:
         """List firewall address objects, optionally filtered.
 
@@ -52,11 +55,17 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         a subnet object shows CIDR, an FQDN object shows the hostname, and a MAC
         object shows the MAC addresses.
 
+        Compare `count` against `total_available` before concluding anything
+        about the whole table. When `truncated` is present this is one page and
+        `next_offset` says where the following one begins.
+
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
             name_contains: Case-insensitive substring filter on the object name.
             address_type: Exact FortiOS type filter, such as ipmask, fqdn, iprange,
                 geography, or mac.
+            limit: Maximum objects to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -70,15 +79,26 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             if address_type and raw.get("type", "ipmask") != address_type:
                 continue
             results.append(summarize_address(raw))
-        return {"target": fgt.name, "vdom": fgt.vdom, "count": len(results), "addresses": results}
+        window, paging = paginate(results, limit, offset)
+        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "addresses": window}
 
     @mcp.tool(annotations=read_only("List address groups"))
-    def list_address_groups(target: str | None = None, name_contains: str | None = None) -> dict[str, Any]:
+    def list_address_groups(
+        target: str | None = None,
+        name_contains: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """List firewall address groups and their members.
+
+        Compare `count` against `total_available` before concluding anything
+        about the whole table. When `truncated` is present this is one page.
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
             name_contains: Case-insensitive substring filter on the group name.
+            limit: Maximum groups to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -94,15 +114,26 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             for raw in raw_groups
             if _matches(raw.get("name", ""), name_contains)
         ]
-        return {"target": fgt.name, "vdom": fgt.vdom, "count": len(results), "groups": results}
+        window, paging = paginate(results, limit, offset)
+        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "groups": window}
 
     @mcp.tool(annotations=read_only("List services"))
-    def list_services(target: str | None = None, name_contains: str | None = None) -> dict[str, Any]:
+    def list_services(
+        target: str | None = None,
+        name_contains: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """List firewall service objects with their protocols and ports.
+
+        Compare `count` against `total_available` before concluding anything
+        about the whole table. When `truncated` is present this is one page.
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
             name_contains: Case-insensitive substring filter on the service name.
+            limit: Maximum services to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -110,7 +141,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             raw_services = fetch_table(api, SERVICES)
 
         results = [summarize_service(raw) for raw in raw_services if _matches(raw.get("name", ""), name_contains)]
-        return {"target": fgt.name, "vdom": fgt.vdom, "count": len(results), "services": results}
+        window, paging = paginate(results, limit, offset)
+        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "services": window}
 
     @mcp.tool(annotations=read_only("List firewall policies"))
     def list_policies(
@@ -119,6 +151,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         interface: str | None = None,
         address: str | None = None,
         service: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> dict[str, Any]:
         """List firewall policies in evaluation order, optionally filtered.
 
@@ -126,6 +160,14 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         an explicit `order` index so that ordering survives filtering and
         re-serialization. Order is the entire meaning of a ruleset, and a list
         position is not something downstream is obliged to preserve.
+
+        Three counts appear and they mean different things. `count` is rows in
+        this page, `total_available` is rows matching your filters, and
+        `total_policies` is the size of the whole ruleset. A `truncated` flag
+        means this is one page of the matches, not all of them, which matters
+        more here than elsewhere: reasoning about a ruleset from an arbitrary
+        prefix of it produces confident wrong answers about what traffic is
+        allowed.
 
         The filters match names exactly and do not expand indirection. A policy
         referencing a group that contains your address will not match `address`,
@@ -141,6 +183,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             address: Keep only policies naming this address object or group
                 directly, on either side.
             service: Keep only policies naming this service object directly.
+            limit: Maximum policies to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large ruleset.
 
         """
         fgt = registry.resolve(target)
@@ -161,24 +205,34 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 continue
             results.append(summary)
 
+        window, paging = paginate(results, limit, offset)
         return {
             "target": fgt.name,
             "vdom": fgt.vdom,
-            "count": len(results),
+            **paging,
             "total_policies": len(raw_policies),
-            "policies": results,
+            "policies": window,
         }
 
     @mcp.tool(annotations=read_only("List virtual IPs"))
-    def list_vips(target: str | None = None) -> dict[str, Any]:
+    def list_vips(
+        target: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """List virtual IPs, which are the destination NAT rules.
 
         A VIP maps an external address, and optionally an external port, to an
         internal one. FortiOS stores those addresses inline on the VIP rather
         than as references to address objects.
 
+        Compare `count` against `total_available` before concluding anything
+        about the whole table. When `truncated` is present this is one page.
+
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
+            limit: Maximum VIPs to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -204,7 +258,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 entry["comment"] = raw["comment"]
             results.append(entry)
 
-        return {"target": fgt.name, "vdom": fgt.vdom, "count": len(results), "vips": results}
+        window, paging = paginate(results, limit, offset)
+        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "vips": window}
 
     @mcp.tool(annotations=read_only("Find what references an object"))
     def find_references(object_name: str, target: str | None = None) -> dict[str, Any]:

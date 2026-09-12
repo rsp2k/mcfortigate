@@ -152,6 +152,23 @@ call. The distinction matters more than it sounds: a DHCP-assigned default route
 shows up in `get_routing_table` and never in `list_static_routes`, because it was
 never configured.
 
+### Why the listing tools page and the others do not
+
+Every listing tool takes `limit` and `offset`, defaults to 200 rows, and always
+reports `total_available`. A partial page additionally carries `truncated` and
+`next_offset`.
+
+The problem this solves is not memory. A FortiGate with four thousand ARP
+entries produces a response Python handles without noticing; what breaks is an
+MCP client with a size limit truncating the payload on the way to the model,
+which then reads whatever survived as the whole answer. Nothing in the data says
+otherwise. Bounding the result here makes the same truncation visible instead of
+silent.
+
+The analysis tools — `find_references`, `search_config`, `find_device` — take no
+`limit` on purpose. They scan in order to reach a verdict, and a verdict from a
+partial scan is not a shorter answer, it is a wrong one.
+
 ## FortiOS behaviors handled here
 
 These were found against real hardware rather than in documentation, and each

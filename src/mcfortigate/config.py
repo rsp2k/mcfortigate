@@ -120,6 +120,28 @@ def parse_host_url(raw_url: str) -> tuple[str, int | None, str]:
     return parsed.hostname, parsed.port, parsed.scheme or "https"
 
 
+def _as_int(value: object, default: int, name: str) -> int:
+    """Coerce a setting to an int, failing with a message that names the setting.
+
+    The bare `int()` this replaces raised `invalid literal for int() with base
+    10: '30s'` from inside a startup path, which says nothing about which
+    variable was wrong or where to change it. Settings arrive from a `.env`
+    file, so units-in-the-value (`30s`) and stray quotes are the normal kinds of
+    mistake rather than exotic ones.
+    """
+    if value is None or value == "":
+        return default
+    if isinstance(value, bool):
+        raise ConfigError(f"{name} must be a number, not a true/false value")
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        raise ConfigError(
+            f"{name} must be a whole number of seconds or a port number, but is {value!r}. "
+            "Write it as digits only, with no units and no quotes."
+        ) from None
+
+
 def _as_bool(value: object, default: bool) -> bool:
     """Coerce the usual truthy spellings operators write in a .env file."""
     if value is None:
@@ -142,10 +164,10 @@ def _target_from_mapping(name: str, raw: dict) -> FortiGateTarget:
         name=name,
         host=host,
         scheme=scheme,
-        port=int(port) if port else None,
+        port=_as_int(port, 0, f"port for target {name!r}") or None,
         vdom=str(raw.get("vdom", "root")),
         verify_ssl=_as_bool(raw.get("verify_ssl"), True),
-        timeout=int(raw.get("timeout", 30)),
+        timeout=_as_int(raw.get("timeout"), 30, f"timeout for target {name!r}"),
         token=raw.get("token"),
         username=raw.get("username"),
         password=raw.get("password"),
@@ -185,10 +207,10 @@ def load_targets(env: dict[str, str] | None = None) -> dict[str, FortiGateTarget
             name=name,
             host=host,
             scheme=scheme,
-            port=int(env_port) if env_port else url_port,
+            port=_as_int(env_port, 0, "FORTIGATE_PORT") or url_port,
             vdom=env.get("FORTIGATE_VDOM", "root").strip() or "root",
             verify_ssl=_as_bool(env.get("FORTIGATE_VERIFY_SSL"), True),
-            timeout=int(env.get("FORTIGATE_TIMEOUT", "30")),
+            timeout=_as_int(env.get("FORTIGATE_TIMEOUT"), 30, "FORTIGATE_TIMEOUT"),
             token=env.get("FORTIGATE_TOKEN") or None,
             username=env.get("FORTIGATE_USERNAME") or None,
             password=env.get("FORTIGATE_PASSWORD") or None,

@@ -23,6 +23,7 @@ from mcfortigate.fortios import (
     summarize_interface,
     summarize_route,
 )
+from mcfortigate.paging import paginate
 
 
 def register(mcp: FastMCP, registry: TargetRegistry) -> None:
@@ -34,6 +35,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         include_internal: bool = False,
         interface_type: str | None = None,
         with_ip_only: bool = False,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> dict[str, Any]:
         """List interfaces with their addresses, VLAN tags, and link state.
 
@@ -54,6 +57,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             interface_type: Exact FortiOS type filter, such as physical, vlan,
                 aggregate, hard-switch, switch, or tunnel.
             with_ip_only: Keep only interfaces carrying a static IP address.
+            limit: Maximum interfaces to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -76,18 +81,23 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 continue
             results.append(summary)
 
+        window, paging = paginate(results, limit, offset)
         response: dict[str, Any] = {
             "target": fgt.name,
             "vdom": fgt.vdom,
-            "count": len(results),
-            "interfaces": results,
+            **paging,
+            "interfaces": window,
         }
         if hidden:
             response["hidden_internal"] = sorted(hidden)
         return response
 
     @mcp.tool(annotations=read_only("List VLANs"))
-    def list_vlans(target: str | None = None) -> dict[str, Any]:
+    def list_vlans(
+        target: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """List VLAN sub-interfaces with their tags and parent interfaces.
 
         A focused view of the VLAN subset of the interface table, since what
@@ -96,6 +106,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
+            limit: Maximum rows to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -108,10 +120,15 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             if raw.get("type") == "vlan" and not is_internal_interface(raw.get("name", ""))
         ]
         results.sort(key=lambda item: (item.get("vlan_id") is None, item.get("vlan_id") or 0))
-        return {"target": fgt.name, "vdom": fgt.vdom, "count": len(results), "vlans": results}
+        window, paging = paginate(results, limit, offset)
+        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "vlans": window}
 
     @mcp.tool(annotations=read_only("List configured static routes"))
-    def list_static_routes(target: str | None = None) -> dict[str, Any]:
+    def list_static_routes(
+        target: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """List configured static routes.
 
         These are the routes an operator configured, which is not the same as the
@@ -124,6 +141,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
+            limit: Maximum rows to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -135,10 +154,16 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 resolve_route_destinations(summaries, fetch_table(api, ADDRESSES))
 
         summaries.sort(key=lambda item: item.get("seq_num") or 0)
-        return {"target": fgt.name, "vdom": fgt.vdom, "count": len(summaries), "routes": summaries}
+        window, paging = paginate(summaries, limit, offset)
+        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "routes": window}
 
     @mcp.tool(annotations=read_only("Show the active routing table"))
-    def get_routing_table(target: str | None = None, protocol: str | None = None) -> dict[str, Any]:
+    def get_routing_table(
+        target: str | None = None,
+        protocol: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> dict[str, Any]:
         """Show the active IPv4 routing table as the appliance is forwarding it.
 
         This is live state rather than configuration, so it includes connected
@@ -148,6 +173,8 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
             protocol: Filter by route type, such as static, connect, or dhcp.
+            limit: Maximum rows to return. Defaults to 200, capped at 1000.
+            offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
@@ -166,11 +193,12 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             for entry in monitor.rows
             if not protocol or entry.get("type") == protocol
         ]
+        window, paging = paginate(results, limit, offset)
         response: dict[str, Any] = {
             "target": fgt.name,
             "vdom": fgt.vdom,
-            "count": len(results),
-            "routes": results,
+            **paging,
+            "routes": window,
             "source_status": monitor.describe(),
         }
         if not monitor.ok:

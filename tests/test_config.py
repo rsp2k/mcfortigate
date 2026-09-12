@@ -182,3 +182,39 @@ class TestTargetRegistry:
             alpha=FortiGateTarget(name="alpha", host="b", token="y"),
         )
         assert registry.names == ["alpha", "zed"]
+
+
+class TestNumericSettingsFailReadably:
+    """A bad number in .env must name the setting, not just the literal.
+
+    The bare `int()` these replace raised "invalid literal for int() with base
+    10: '30s'" from inside startup, which tells an operator nothing about which
+    variable to change. Units in the value are the normal mistake, since these
+    are seconds and people write seconds as `30s`.
+    """
+
+    def test_timeout_with_units_names_the_variable(self):
+        with pytest.raises(ConfigError) as caught:
+            load_targets({"FORTIGATE_HOST": "fgt.example", "FORTIGATE_TOKEN": "x", "FORTIGATE_TIMEOUT": "30s"})
+        assert "FORTIGATE_TIMEOUT" in str(caught.value)
+        assert "30s" in str(caught.value)
+
+    def test_port_with_junk_names_the_variable(self):
+        with pytest.raises(ConfigError) as caught:
+            load_targets({"FORTIGATE_HOST": "fgt.example", "FORTIGATE_TOKEN": "x", "FORTIGATE_PORT": "https"})
+        assert "FORTIGATE_PORT" in str(caught.value)
+
+    def test_a_per_target_bad_number_names_that_target(self):
+        """With several appliances, which one failed is the useful half."""
+        with pytest.raises(ConfigError) as caught:
+            load_targets({"FORTIGATE_TARGETS": '{"branch": {"host": "b.example", "token": "x", "timeout": "abc"}}'})
+        assert "branch" in str(caught.value)
+
+    def test_empty_value_falls_back_to_the_default(self):
+        """`FORTIGATE_TIMEOUT=` with nothing after it is not an error."""
+        targets = load_targets({"FORTIGATE_HOST": "fgt.example", "FORTIGATE_TOKEN": "x", "FORTIGATE_TIMEOUT": ""})
+        assert next(iter(targets.values())).timeout == 30
+
+    def test_a_good_value_still_works(self):
+        targets = load_targets({"FORTIGATE_HOST": "fgt.example", "FORTIGATE_TOKEN": "x", "FORTIGATE_TIMEOUT": " 45 "})
+        assert next(iter(targets.values())).timeout == 45
