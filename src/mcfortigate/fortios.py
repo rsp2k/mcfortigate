@@ -353,12 +353,127 @@ def summarize_service(raw: dict) -> dict[str, Any]:
     return summary
 
 
+#: Policy fields this module reads directly. Listed so the backstop below can
+#: tell "handled" from "never heard of it".
+_POLICY_HANDLED = frozenset(
+    {
+        "policyid", "name", "status", "action", "srcintf", "dstintf",
+        "srcaddr", "dstaddr", "service", "nat", "schedule", "logtraffic",
+        "comments", "srcaddr-negate", "dstaddr-negate", "service-negate",
+        "internet-service", "internet-service-name", "internet-service-group",
+        "internet-service-custom", "internet-service-custom-group",
+        "internet-service-negate", "internet-service-src",
+        "internet-service-src-name", "internet-service-src-group",
+        "internet-service-src-custom", "internet-service-src-custom-group",
+        "internet-service-src-negate", "srcaddr6", "dstaddr6", "groups",
+        "users", "fsso-groups",
+    }
+)
+
+#: Fields deliberately dropped, each verified not to change what a rule matches
+#: or what it does with a match. Everything here appears at a non-default value
+#: on a stock FortiOS 7.0.14 policy, so without this list the backstop would
+#: fire on every rule and be ignored within a day.
+#:
+#: The bar for adding a name here is knowing it cannot alter the rule's meaning.
+#: When unsure, leave it out and let it surface in `unsummarized`: a noisy
+#: backstop wastes attention, a quiet one loses rules.
+_POLICY_IGNORED = frozenset(
+    {
+        # Identity and bookkeeping.
+        "uuid", "uuid-idx", "q_origin_key", "global-label", "label",
+        # Hardware offload and session handling.
+        "anti-replay", "auto-asic-offload", "np-acceleration",
+        "delay-tcp-npu-session", "firewall-session-dirty", "session-ttl",
+        "tcp-mss-receiver", "tcp-mss-sender", "tcp-session-without-syn",
+        "timeout-send-rst", "dsri", "fec",
+        # QoS and marking. Affects treatment, never whether traffic matches.
+        "tos", "tos-mask", "tos-negate", "diffserv-forward", "diffserv-reverse",
+        "diffservcode-forward", "diffservcode-rev", "vlan-cos-fwd",
+        "vlan-cos-rev", "traffic-shaper", "traffic-shaper-reverse",
+        "per-ip-shaper", "dynamic-shaping",
+        # Inspection profiles. Change what happens to matched traffic, not what
+        # matches; surfacing every one of them would drown the summary.
+        "inspection-mode", "profile-type", "profile-group",
+        "profile-protocol-options", "ssl-ssh-profile", "av-profile",
+        "webfilter-profile", "dnsfilter-profile", "emailfilter-profile",
+        "dlp-sensor", "file-filter-profile", "ips-sensor", "application-list",
+        "voip-profile", "sctp-filter-profile", "icap-profile", "waf-profile",
+        "ssh-filter-profile", "cifs-profile", "videofilter-profile",
+        "utm-status", "custom-log-fields", "replacemsg-override-group",
+        "decrypted-traffic-mirror", "capture-packet", "block-notification",
+        # Logging detail beyond the summarized `logtraffic`.
+        "logtraffic-start",
+        # WAN optimization, caching, and proxy plumbing.
+        "wanopt", "wanopt-detection", "wanopt-passive-opt", "wanopt-peer",
+        "wanopt-profile", "webcache", "webcache-https", "wccp",
+        "webproxy-forward-server", "webproxy-profile", "http-policy-redirect",
+        "ssh-policy-redirect",
+        # NAT detail. `nat` itself is summarized; these qualify an active NAT.
+        "natip", "natinbound", "natoutbound", "fixedport", "inbound",
+        "outbound", "nat46", "nat64", "ippool", "poolname", "poolname6",
+        # Geo and reputation matching at their defaults.
+        "geoip-match", "geoip-anycast", "reputation-direction",
+        "reputation-minimum",
+        # Authentication presentation, not scope. Scope is `groups` / `users`.
+        "auth-cert", "auth-path", "auth-redirect-addr", "disclaimer",
+        "captive-portal-exempt", "email-collect", "redirect-url",
+        "identity-based-route", "ntlm", "ntlm-enabled-browsers", "ntlm-guest",
+        "fsso-agent-for-ntlm", "radius-mac-auth-bypass", "permit-any-host",
+        "permit-stun-host", "rtp-nat", "rtp-addr", "send-deny-packet",
+        "match-vip", "match-vip-only", "schedule-timeout", "vpntunnel",
+        "passive-wan-health-measurement", "vlan-filter", "src-vendor-mac",
+        "sgt", "sgt-check", "ztna-status", "ztna-ems-tag", "ztna-geo-tag",
+    }
+)
+
+#: Values that mean "this field is at its default and says nothing".
+_POLICY_EMPTY = ("", [], {}, None, "disable", "0.0.0.0 0.0.0.0", 0)
+
+
+def _is_default(value: Any) -> bool:
+    """Report whether a policy field carries no information.
+
+    Compared by identity-and-equality against a small sentinel set rather than
+    by truthiness, because `0` and `""` are meaningful defaults here while a
+    field holding `False` would not be.
+    """
+    return any(value == empty and type(value) is type(empty) for empty in _POLICY_EMPTY)
+
+
+def _internet_services(raw: dict, prefix: str) -> list[str]:
+    """Collect Internet Service names across the four fields that hold them."""
+    names: list[str] = []
+    for suffix in ("name", "group", "custom", "custom-group"):
+        names.extend(member_names(raw.get(f"{prefix}-{suffix}")))
+    return names
+
+
 def summarize_policy(raw: dict) -> dict[str, Any]:
     """Reduce a ``firewall/policy`` object to the fields an operator reads.
 
-    A raw policy carries eighty-plus fields. What survives here is the rule as
-    a human would state it: what it matches, which way traffic flows, whether
-    it allows or denies, and whether it is on.
+    A raw policy carries 147 fields on FortiOS 7.0.14. What survives here is the
+    rule as a human would state it: what it matches, which way traffic flows,
+    whether it allows or denies, and whether it is on.
+
+    Two classes of field are handled specially because dropping them would not
+    merely shorten the answer, it would reverse it.
+
+    Negation. `srcaddr-negate` and its siblings make a policy match everything
+    *except* what is listed, so a summary that reports the list alone states the
+    opposite of the rule. These appear as `source_negated` and friends, and
+    again in prose in `match_note`, since a flag beside a list is easy to skim
+    past and a sentence is not.
+
+    Internet Service. With `internet-service` enabled, FortiOS ignores `dstaddr`
+    entirely and matches against its Internet Service database instead. The real
+    match appears as `destination_internet_service`, and `match_note` says that
+    the address is inert, because `destination: ["all"]` left unqualified reads
+    as a rule that reaches everything.
+
+    Anything else carrying a non-default value that this function neither reads
+    nor explicitly ignores lands in `unsummarized`. That is the backstop for the
+    field nobody knew to look for, including the ones a future firmware adds.
     """
     summary: dict[str, Any] = {
         "id": raw.get("policyid"),
@@ -371,6 +486,49 @@ def summarize_policy(raw: dict) -> dict[str, Any]:
         "destination": member_names(raw.get("dstaddr")),
         "service": member_names(raw.get("service")),
     }
+
+    notes: list[str] = []
+
+    # Negation, the field class that inverts meaning.
+    for field_name, key, label in (
+        ("srcaddr-negate", "source_negated", "source"),
+        ("dstaddr-negate", "destination_negated", "destination"),
+        ("service-negate", "service_negated", "service"),
+    ):
+        if fortios_bool(raw.get(field_name)):
+            summary[key] = True
+            notes.append(f"This rule matches every {label} EXCEPT the ones listed in '{label}'.")
+
+    # Internet Service, the field class that replaces the address match.
+    if fortios_bool(raw.get("internet-service")):
+        services = _internet_services(raw, "internet-service")
+        summary["destination_internet_service"] = services
+        if fortios_bool(raw.get("internet-service-negate")):
+            summary["destination_internet_service_negated"] = True
+        notes.append(
+            "Destination matching uses the Internet Service database, so the "
+            "'destination' address list is ignored by the appliance."
+        )
+    if fortios_bool(raw.get("internet-service-src")):
+        summary["source_internet_service"] = _internet_services(raw, "internet-service-src")
+        if fortios_bool(raw.get("internet-service-src-negate")):
+            summary["source_internet_service_negated"] = True
+        notes.append(
+            "Source matching uses the Internet Service database, so the "
+            "'source' address list is ignored by the appliance."
+        )
+
+    # Scope that narrows a rule below what its address lists suggest.
+    for field_name, key in (
+        ("srcaddr6", "source_v6"),
+        ("dstaddr6", "destination_v6"),
+        ("groups", "identity_groups"),
+        ("users", "identity_users"),
+        ("fsso-groups", "identity_fsso_groups"),
+    ):
+        if members := member_names(raw.get(field_name)):
+            summary[key] = members
+
     if fortios_bool(raw.get("nat")):
         summary["nat"] = True
     if raw.get("schedule") and raw["schedule"] != "always":
@@ -380,6 +538,18 @@ def summarize_policy(raw: dict) -> dict[str, Any]:
         summary["log"] = logtraffic
     if raw.get("comments"):
         summary["comment"] = raw["comments"]
+
+    if notes:
+        summary["match_note"] = " ".join(notes)
+
+    unsummarized = {
+        key: value
+        for key, value in raw.items()
+        if key not in _POLICY_HANDLED and key not in _POLICY_IGNORED and not _is_default(value)
+    }
+    if unsummarized:
+        summary["unsummarized"] = unsummarized
+
     return summary
 
 
