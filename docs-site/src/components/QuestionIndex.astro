@@ -8,7 +8,7 @@
  */
 const questions: { ask: string; tool: string; note?: string }[] = [
   { ask: 'What is 192.168.1.47?', tool: 'find_device', note: 'wifi + DHCP + ARP, joined' },
-  { ask: 'Is this address object safe to delete?', tool: 'find_references', note: 'five lookups, one verdict' },
+  { ask: 'Is this address object safe to delete?', tool: 'find_references', note: 'the appliance’s own answer' },
   { ask: 'Where does 10.20.30.0/24 appear?', tool: 'search_config', note: 'every object type at once' },
   { ask: 'What does this ruleset actually allow?', tool: 'list_policies', note: 'in evaluation order' },
   { ask: 'Is Kevin’s laptop on the network?', tool: 'find_device' },

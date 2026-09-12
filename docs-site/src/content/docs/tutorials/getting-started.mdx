@@ -108,21 +108,23 @@ machine that can reach its management interface. You also need
 
 5. ### Add the server to your MCP client
 
-   <Aside type="caution" title="Not released yet">
-   The first release has not been published, so `uvx mcfortigate` will not
-   resolve until it is. Until then, run it from a checkout: point the client's
-   command at `uv run --directory /path/to/mcfortigate mcfortigate` instead.
-   </Aside>
-
    <Tabs>
    <TabItem label="Claude Code">
 
+   Read the token into a variable first rather than typing it on the command
+   line, so it never lands in `~/.bash_history`:
+
    ```bash
+   printf 'FortiGate API token: '; read -rs FORTIGATE_TOKEN; echo
+
    claude mcp add fortigate \
      --env FORTIGATE_HOST=fgt.example.com \
-     --env FORTIGATE_TOKEN=your-token \
+     --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \
      -- uvx mcfortigate
    ```
+
+   History records the literal `"$FORTIGATE_TOKEN"`, not its value. `read -rs`
+   echoes nothing as you paste.
 
    </TabItem>
    <TabItem label="Claude Desktop">
@@ -148,10 +150,16 @@ machine that can reach its management interface. You also need
    <TabItem label="Any MCP client">
 
    The server runs over stdio. The command is `uvx mcfortigate`, and
-   configuration arrives entirely through the environment:
+   configuration arrives entirely through the environment, so a client that
+   passes its own environment through needs no credential in its config at
+   all:
 
    ```bash
-   FORTIGATE_HOST=fgt.example.com FORTIGATE_TOKEN=your-token uvx mcfortigate
+   export FORTIGATE_HOST=fgt.example.com
+   printf 'FortiGate API token: '; read -rs FORTIGATE_TOKEN; echo
+   export FORTIGATE_TOKEN
+
+   uvx mcfortigate
    ```
 
    </TabItem>
@@ -159,6 +167,18 @@ machine that can reach its management interface. You also need
 
    `uvx` fetches and runs the package without installing it anywhere
    permanent, so there is no virtualenv to manage and upgrades are automatic.
+
+   <Aside type="caution" title="Where the token ends up">
+   Keeping it out of shell history is worth doing, but be clear on what it
+   does not do. A client you hand `--env` to stores the value in its own
+   config file in plaintext — `~/.claude.json` for Claude Code,
+   `claude_desktop_config.json` for Desktop — readable by anything running as
+   you.
+
+   That is why the trusted-hosts restriction in step 2 is the control that
+   actually matters. A token that only works from one address is survivable
+   when a config file leaks; one that works from anywhere is not.
+   </Aside>
 
 6. ### Ask it something
 

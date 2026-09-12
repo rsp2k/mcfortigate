@@ -13,17 +13,24 @@ work. This covers the decisions it makes for you.
 `claude mcp add` writes the server into one of three places, and the choice
 determines who else gets it and whether your token ends up in git.
 
+Read the token in once, and every form below reuses the variable rather than
+putting the credential on a command line:
+
+```bash
+printf 'FortiGate API token: '; read -rs FORTIGATE_TOKEN; echo
+```
+
 ```bash
 # local (default) — this project, this machine, not committed
 claude mcp add fortigate \
   --env FORTIGATE_HOST=fgt.example.com \
-  --env FORTIGATE_TOKEN=your-token \
+  --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \
   -- uvx mcfortigate
 
 # user — every project on this machine
 claude mcp add fortigate --scope user \
   --env FORTIGATE_HOST=fgt.example.com \
-  --env FORTIGATE_TOKEN=your-token \
+  --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \
   -- uvx mcfortigate
 
 # project — written to .mcp.json, which is committed
@@ -52,8 +59,13 @@ server reads it at startup:
 
 ```bash
 export FORTIGATE_HOST=fgt.example.com
-export FORTIGATE_TOKEN=your-token
+printf 'FortiGate API token: '; read -rs FORTIGATE_TOKEN; echo
+export FORTIGATE_TOKEN
 ```
+
+Put those in a file only you can read — `~/.config/mcfortigate/env`, mode
+`0600`, sourced from your shell profile — rather than in the profile itself,
+which people share and paste more often than they expect.
 
 A FortiGate API token in git history is a credential you have to rotate on the
 appliance, not one you can delete.
@@ -91,7 +103,7 @@ reproducing a result from last month — pin it:
 ```bash
 claude mcp add fortigate \
   --env FORTIGATE_HOST=fgt.example.com \
-  --env FORTIGATE_TOKEN=your-token \
+  --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \
   -- uvx mcfortigate@2026.9.11
 ```
 

@@ -26,7 +26,8 @@ Claude Code surfaces this in its MCP logs. Other clients vary; if yours hides
 server output, run the command by hand to see it:
 
 ```bash
-FORTIGATE_HOST=fgt.example.com FORTIGATE_TOKEN=your-token uvx mcfortigate
+printf 'FortiGate API token: '; read -rs FORTIGATE_TOKEN; echo
+FORTIGATE_HOST=fgt.example.com FORTIGATE_TOKEN="$FORTIGATE_TOKEN" uvx mcfortigate
 ```
 
 It will sit there waiting for stdio, which is correct. Ctrl-C out.
@@ -41,7 +42,7 @@ path in the client configuration:
 ```bash
 claude mcp add fortigate \
   --env FORTIGATE_HOST=fgt.example.com \
-  --env FORTIGATE_TOKEN=your-token \
+  --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \
   -- /home/you/.local/bin/uvx mcfortigate
 ```
 

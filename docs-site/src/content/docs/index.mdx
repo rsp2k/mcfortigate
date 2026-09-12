@@ -53,9 +53,12 @@ reading before you decide how much of your own tooling to shape this way.
 
 <Code
   lang="bash"
-  code={`claude mcp add fortigate \\
+  title="Terminal"
+  code={`printf 'FortiGate API token: '; read -rs FORTIGATE_TOKEN; echo
+
+claude mcp add fortigate \\
   --env FORTIGATE_HOST=fgt.example.com \\
-  --env FORTIGATE_TOKEN=your-token \\
+  --env FORTIGATE_TOKEN="$FORTIGATE_TOKEN" \\
   -- uvx mcfortigate`}
 />
 
@@ -63,11 +66,8 @@ That is the whole setup, once you have a read-only REST API admin on the
 appliance. [Getting started](/tutorials/getting-started/) walks through creating
 one.
 
-:::caution[Not released yet]
-The first release has not been published, so `uvx mcfortigate` will not resolve
-until it is. Everything documented here describes the server as it currently
-stands; the install line is the one that will work on release day.
-:::
+The token goes through a variable rather than onto the command line, so shell
+history records `"$FORTIGATE_TOKEN"` instead of the credential itself.
 
 <CardGrid>
   <Card title="Read-only, structurally" icon="approve-check">
