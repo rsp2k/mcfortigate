@@ -3,7 +3,18 @@ title: Configuration
 description: Every environment variable mcfortigate reads, how a host string is parsed, and how the two configuration styles interact.
 ---
 
-All configuration is environment variables, read once at startup. Credentials
+All configuration is environment variables, read once at startup.
+
+:::caution[The server does not read a `.env` file]
+Dropping a `.env` beside the installed package does nothing. The server reads
+the process environment and only that, which is what the `--env` flags in every
+install example are for.
+
+`.env` loading exists, but it belongs to the repository's own scripts — it is
+read from beside `pyproject.toml` by `scripts/validate_hardware.py` when you
+run it from a checkout. That is a development convenience, not how the server
+is configured.
+::: Credentials
 never appear in a tool argument or a tool response, and the dataclass holding
 them excludes the secret fields from its `repr`, so a stray log line or a
 traceback cannot leak them either.

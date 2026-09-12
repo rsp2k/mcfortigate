@@ -32,6 +32,33 @@ FORTIGATE_HOST=fgt.example.com FORTIGATE_TOKEN="$FORTIGATE_TOKEN" uvx mcfortigat
 
 It will sit there waiting for stdio, which is correct. Ctrl-C out.
 
+## An upgrade appears to have changed nothing
+
+The most confusing failure in this list, because nothing about it looks like a
+failure.
+
+**A running MCP server serves the code it launched with.** `uvx mcfortigate`
+resolves the latest release *at process start*, so after a new version is
+published the old behaviour persists — a fixed bug stays fixed only for
+processes started afterwards, and a new tool argument is rejected as unknown.
+There is no error, no warning, and nothing in any response that says the code
+is stale.
+
+Restart the client, or restart the server from within it, and check the banner:
+
+```
+mcfortigate v2026.9.12 | targets: fgt.example.com
+```
+
+That version is the resolved one, not the one you meant to install. If it reads
+older than the release you expect, the process predates it and everything you
+are observing is the old behaviour, correctly.
+
+Worth knowing because the symptom mimics a real bug precisely: a tool argument
+documented here comes back rejected, or a response is missing a field this
+reference says it carries. The first thing to check is the banner, not the
+documentation.
+
 ## The server shows as failed in the client
 
 **`uvx` is not on the client's PATH.** MCP clients often launch with a minimal
