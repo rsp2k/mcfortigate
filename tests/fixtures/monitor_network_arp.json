@@ -1,0 +1,25 @@
+{
+ "http_method": "GET",
+ "results": [
+  {
+   "ip": "198.18.2.240",
+   "age": 0,
+   "mac": "00:00:5e:00:53:01",
+   "interface": "lan"
+  },
+  {
+   "ip": "198.18.4.1",
+   "age": 1,
+   "mac": "00:00:5e:00:53:02",
+   "interface": "wan1"
+  }
+ ],
+ "vdom": "root",
+ "path": "network",
+ "name": "arp",
+ "action": "",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

@@ -1,0 +1,18 @@
+{
+ "http_method": "GET",
+ "results": {
+  "model_name": "FortiWiFi",
+  "model_number": "61E",
+  "model": "FWF61E",
+  "hostname": "FortiWiFi-61E",
+  "log_disk_status": "available"
+ },
+ "vdom": "root",
+ "path": "system",
+ "name": "status",
+ "action": "",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

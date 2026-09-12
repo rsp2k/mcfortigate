@@ -1,0 +1,144 @@
+{
+ "captured": "2026-09-12",
+ "appliance": {
+  "model": "FWF61E",
+  "version": "v7.0.14",
+  "build": 601
+ },
+ "fixtures": {
+  "cmdb_firewall_address": {
+   "endpoint": "api/v2/cmdb/firewall/address"
+  },
+  "cmdb_firewall_addrgrp": {
+   "endpoint": "api/v2/cmdb/firewall/addrgrp"
+  },
+  "cmdb_firewall_service_custom": {
+   "endpoint": "api/v2/cmdb/firewall.service/custom"
+  },
+  "cmdb_firewall_service_group": {
+   "endpoint": "api/v2/cmdb/firewall.service/group"
+  },
+  "cmdb_firewall_policy": {
+   "endpoint": "api/v2/cmdb/firewall/policy"
+  },
+  "cmdb_firewall_vip": {
+   "endpoint": "api/v2/cmdb/firewall/vip"
+  },
+  "cmdb_system_interface": {
+   "endpoint": "api/v2/cmdb/system/interface"
+  },
+  "cmdb_router_static": {
+   "endpoint": "api/v2/cmdb/router/static"
+  },
+  "cmdb_system_global": {
+   "endpoint": "api/v2/cmdb/system/global"
+  },
+  "monitor_system_status": {
+   "endpoint": "api/v2/monitor/system/status"
+  },
+  "monitor_system_resource_usage": {
+   "endpoint": "api/v2/monitor/system/resource/usage",
+   "trimmed": "history reduced to 3 samples per period and rebased onto a fixed origin"
+  },
+  "monitor_wifi_client": {
+   "endpoint": "api/v2/monitor/wifi/client"
+  },
+  "monitor_system_dhcp": {
+   "endpoint": "api/v2/monitor/system/dhcp"
+  },
+  "monitor_network_arp": {
+   "endpoint": "api/v2/monitor/network/arp"
+  },
+  "monitor_router_ipv4": {
+   "endpoint": "api/v2/monitor/router/ipv4"
+  },
+  "monitor_system_object_usage__address_all": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "address",
+    "mkey": "all"
+   }
+  },
+  "monitor_system_object_usage__address_group_member": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "address",
+    "mkey": "gmail.com"
+   }
+  },
+  "monitor_system_object_usage__address_unreferenced": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "address",
+    "mkey": "none"
+   }
+  },
+  "monitor_system_object_usage__address_table_asked_about_an_interface": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "address",
+    "mkey": "wan1"
+   }
+  },
+  "monitor_system_object_usage__interface_wan1": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "system",
+    "q_name": "interface",
+    "mkey": "wan1"
+   }
+  },
+  "monitor_system_object_usage__absent_addresses": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "address",
+    "mkey": "__mcfortigate_absent__"
+   }
+  },
+  "monitor_system_object_usage__absent_address_groups": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "addrgrp",
+    "mkey": "__mcfortigate_absent__"
+   }
+  },
+  "monitor_system_object_usage__absent_services": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall.service",
+    "q_name": "custom",
+    "mkey": "__mcfortigate_absent__"
+   }
+  },
+  "monitor_system_object_usage__absent_service_groups": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall.service",
+    "q_name": "group",
+    "mkey": "__mcfortigate_absent__"
+   }
+  },
+  "monitor_system_object_usage__absent_vips": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "firewall",
+    "q_name": "vip",
+    "mkey": "__mcfortigate_absent__"
+   }
+  },
+  "monitor_system_object_usage__absent_interfaces": {
+   "endpoint": "api/v2/monitor/system/object/usage",
+   "query": {
+    "q_path": "system",
+    "q_name": "interface",
+    "mkey": "__mcfortigate_absent__"
+   }
+  }
+ }
+}

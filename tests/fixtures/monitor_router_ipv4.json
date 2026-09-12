@@ -1,0 +1,68 @@
+{
+ "http_method": "GET",
+ "results": [
+  {
+   "ip_version": 4,
+   "type": "static",
+   "ip_mask": "0.0.0.0/0",
+   "distance": 5,
+   "metric": 0,
+   "priority": 1,
+   "vrf": 0,
+   "gateway": "198.18.4.1",
+   "interface": "wan1"
+  },
+  {
+   "ip_version": 4,
+   "type": "connect",
+   "ip_mask": "100.66.0.0/20",
+   "distance": 0,
+   "metric": 0,
+   "priority": 0,
+   "vrf": 0,
+   "gateway": "0.0.0.0",
+   "interface": "wqt.root"
+  },
+  {
+   "ip_version": 4,
+   "type": "connect",
+   "ip_mask": "198.18.4.0/24",
+   "distance": 0,
+   "metric": 0,
+   "priority": 0,
+   "vrf": 0,
+   "gateway": "0.0.0.0",
+   "interface": "wan1"
+  },
+  {
+   "ip_version": 4,
+   "type": "connect",
+   "ip_mask": "198.18.2.0/24",
+   "distance": 0,
+   "metric": 0,
+   "priority": 0,
+   "vrf": 0,
+   "gateway": "0.0.0.0",
+   "interface": "lan"
+  },
+  {
+   "ip_version": 4,
+   "type": "connect",
+   "ip_mask": "198.51.100.0/24",
+   "distance": 0,
+   "metric": 0,
+   "priority": 0,
+   "vrf": 0,
+   "gateway": "0.0.0.0",
+   "interface": "ssot_test_vlan1"
+  }
+ ],
+ "vdom": "root",
+ "path": "router",
+ "name": "ipv4",
+ "action": "",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

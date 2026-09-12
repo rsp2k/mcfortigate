@@ -1,0 +1,1190 @@
+{
+ "http_method": "GET",
+ "results": {
+  "can_use": [
+   {
+    "path": "system",
+    "name": "switch-interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "switch-interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "switch-interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "lte-modem",
+    "range": "global"
+   },
+   {
+    "path": "switch-controller",
+    "name": "fortilink-settings",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "fortilink-settings",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "fortilink-settings",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "fortilink-settings",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "virtual-switch",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "interface",
+    "range": "both"
+   },
+   {
+    "path": "system",
+    "name": "settings",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "settings",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sit-tunnel",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "ha",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ha",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ha",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ha",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ha",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ha",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "dedicated-mgmt",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "arp-table",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "ipv6-neighbor-cache",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "dns",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ddns",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "sflow",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "vdom-sflow",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "netflow",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "vdom-netflow",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "vdom-dns",
+    "range": "vdom"
+   },
+   {
+    "path": "system.dhcp",
+    "name": "server",
+    "range": "vdom"
+   },
+   {
+    "path": "system.dhcp6",
+    "name": "server",
+    "range": "vdom"
+   },
+   {
+    "path": "system.dhcp6",
+    "name": "server",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "modem",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "central-management",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "zone",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "address",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "address",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "multicast-address",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "ipv6-tunnel",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "external-resource",
+    "range": "global-vdom"
+   },
+   {
+    "path": "vpn.certificate",
+    "name": "setting",
+    "range": "vdom"
+   },
+   {
+    "path": "webfilter",
+    "name": "ips-urlfilter-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "webfilter",
+    "name": "ips-urlfilter-setting6",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "radius",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "radius",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "tacacs+",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "ldap",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "domain-controller",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "fsso",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl",
+    "name": "settings",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl",
+    "name": "settings",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ssl",
+    "name": "client",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "sdwan",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "manualkey",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "phase1-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn.ipsec",
+    "name": "manualkey-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn",
+    "name": "ocvpn",
+    "range": "vdom"
+   },
+   {
+    "path": "vpn",
+    "name": "ocvpn",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "gre-tunnel",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "ipip-tunnel",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "mobile-tunnel",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "mobile-tunnel",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "pppoe-interface",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "vxlan",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "geneve",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "virtual-wire-pair",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "dns-server",
+    "range": "vdom"
+   },
+   {
+    "path": "log.syslogd",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.syslogd2",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.syslogd3",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.syslogd4",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.syslogd",
+    "name": "override-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "log.syslogd2",
+    "name": "override-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "log.syslogd3",
+    "name": "override-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "log.syslogd4",
+    "name": "override-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "log.disk",
+    "name": "setting",
+    "range": "vdom"
+   },
+   {
+    "path": "log.fortiguard",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.fortianalyzer",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.fortianalyzer2",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.fortianalyzer3",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.fortianalyzer-cloud",
+    "name": "setting",
+    "range": "global"
+   },
+   {
+    "path": "log.fortianalyzer",
+    "name": "override-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "log.fortianalyzer2",
+    "name": "override-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "log.fortianalyzer3",
+    "name": "override-setting",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "ippool",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "ippool",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "vip",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "vip",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "vipgrp",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "decrypted-traffic-mirror",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "identity-based-route",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "security-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "security-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "shaping-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "shaping-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "local-in-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "local-in-policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "ttl-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "proxy-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "multicast-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "multicast-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "multicast-policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "multicast-policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "interface-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "interface-policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "DoS-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "DoS-policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "sniffer",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "central-snat-map",
+    "range": "vdom"
+   },
+   {
+    "path": "firewall",
+    "name": "central-snat-map",
+    "range": "vdom"
+   },
+   {
+    "path": "authentication",
+    "name": "rule",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "speed-test-schedule",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "standalone-cluster",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "cluster-sync",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "cluster-sync",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "cluster-sync",
+    "range": "global"
+   },
+   {
+    "path": "switch-controller.security-policy",
+    "name": "802-1X",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller.security-policy",
+    "name": "802-1X",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller.security-policy",
+    "name": "802-1X",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller.security-policy",
+    "name": "captive-portal",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "lldp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "vlan-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "vlan-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "vlan-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "vlan-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "dynamic-port-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "managed-switch",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "managed-switch",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "managed-switch",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "managed-switch",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "managed-switch",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "managed-switch",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "switch-group",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "stp-instance",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "global",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "mac-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "switch-controller",
+    "name": "mac-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "wtp",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "nac-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "wireless-controller",
+    "name": "ssid-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "user",
+    "name": "nac-policy",
+    "range": "vdom"
+   },
+   {
+    "path": "extender-controller",
+    "name": "extender-profile",
+    "range": "vdom"
+   },
+   {
+    "path": "extender-controller",
+    "name": "extender",
+    "range": "vdom"
+   },
+   {
+    "path": "extender-controller",
+    "name": "extender",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "fortiguard",
+    "range": "global"
+   },
+   {
+    "path": "endpoint-control",
+    "name": "fctems",
+    "range": "global"
+   },
+   {
+    "path": "ips",
+    "name": "global",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "email-server",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "mac-address-table",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "route-map",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "rip",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "rip",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "rip",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "rip",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ripng",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ripng",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ripng",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ripng",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ripng",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "static",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "policy",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "policy6",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "static6",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ospf",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ospf",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ospf6",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "ospf6",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bgp",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bgp",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bgp",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bgp",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bgp",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bgp",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "isis",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "multicast",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "multicast",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "multicast",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "multicast6",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "auth-path",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bfd",
+    "range": "vdom"
+   },
+   {
+    "path": "router",
+    "name": "bfd6",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "proxy-arp",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "link-monitor",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "ntp",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ntp",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ptp",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "ptp",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "fortisandbox",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "fortindr",
+    "range": "global"
+   },
+   {
+    "path": "system",
+    "name": "nd-proxy",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "vne-tunnel",
+    "range": "vdom"
+   },
+   {
+    "path": "system",
+    "name": "acme",
+    "range": "global"
+   }
+  ],
+  "currently_using": [],
+  "q_types": [
+   0
+  ]
+ },
+ "vdom": "root",
+ "path": "system",
+ "name": "object",
+ "action": "usage",
+ "mkey": "__mcfortigate_absent__",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}

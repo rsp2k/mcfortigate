@@ -1,0 +1,12 @@
+{
+ "http_method": "GET",
+ "results": [],
+ "vdom": "root",
+ "path": "wifi",
+ "name": "client",
+ "action": "",
+ "status": "success",
+ "serial": "FWF61E0000000000",
+ "version": "v7.0.14",
+ "build": 601
+}
