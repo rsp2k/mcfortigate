@@ -50,6 +50,10 @@ MON_DHCP_LEASES = "api/v2/monitor/system/dhcp"
 MON_ARP = "api/v2/monitor/network/arp"
 MON_ROUTING_TABLE = "api/v2/monitor/router/ipv4"
 MON_OBJECT_USAGE = "api/v2/monitor/system/object/usage"
+# What the web UI populates a policy's interface pickers from. Each row carries
+# `valid_in_policy`, which is the appliance's own answer to "is this a real
+# policy endpoint" and the only reliable one. See review finding M8.
+MON_AVAILABLE_INTERFACES = "api/v2/monitor/system/available-interfaces"
 
 #: The object kinds a name can be resolved against, each pairing the cmdb table
 #: that defines the object with the `q_path` / `q_name` the usage endpoint wants
@@ -83,13 +87,22 @@ class MonitorResult:
     The rule: fail soft on absence, never on denial.
     """
 
-    __slots__ = ("rows", "status", "detail")
+    __slots__ = ("rows", "status", "detail", "vdom")
 
-    def __init__(self, rows: list[dict[str, Any]], status: str, detail: str | None = None) -> None:
+    def __init__(
+        self,
+        rows: list[dict[str, Any]],
+        status: str,
+        detail: str | None = None,
+        vdom: str | None = None,
+    ) -> None:
         """Record the rows alongside why there are however many there are."""
         self.rows = rows
         self.status = status
         self.detail = detail
+        #: The vdom the appliance said it answered for, when it said. None is
+        #: "it did not say", never "the default".
+        self.vdom = vdom
 
     @property
     def ok(self) -> bool:
@@ -122,33 +135,73 @@ def _token_session(target: FortiGateTarget) -> requests.Session:
     session = requests.Session()
     port = f":{target.port}" if target.port else ""
     base = f"{target.scheme}://{target.host}{port}"
+    # The handover flag rather than a close on each failure branch. Enumerated
+    # cleanup only covers the failures somebody thought of, and this function
+    # is the one place holding an open socket that no context manager owns yet:
+    # it is called before `connect` enters its own try block, so anything
+    # escaping here escapes with the socket still open. MemoryError and a
+    # KeyboardInterrupt landing mid-handshake are not in the except list below
+    # and never will be.
+    handed_over = False
     try:
-        response = session.get(
-            urljoin(base, "/" + MON_SYSTEM_STATUS),
-            headers={"Authorization": f"Bearer {target.token}"},
-            verify=target.verify_ssl,
-            timeout=target.timeout,
-        )
-    except requests.exceptions.Timeout as exc:
-        session.close()
-        raise FortiOSError(
-            f"{target.name} at {target.url} did not respond within {target.timeout}s. "
-            "Check that the appliance is reachable and that any tunnel is still open."
-        ) from exc
-    except requests.exceptions.RequestException as exc:
-        session.close()
-        raise FortiOSError(f"Could not reach {target.name} at {target.url}: {type(exc).__name__}") from exc
+        try:
+            response = session.get(
+                urljoin(base, "/" + MON_SYSTEM_STATUS),
+                headers={"Authorization": f"Bearer {target.token}"},
+                verify=target.verify_ssl,
+                timeout=target.timeout,
+            )
+        except requests.exceptions.Timeout as exc:
+            raise FortiOSError(
+                f"{target.name} at {target.url} did not respond within {target.timeout}s. "
+                "Check that the appliance is reachable and that any tunnel is still open."
+            ) from exc
+        except requests.exceptions.RequestException as exc:
+            raise FortiOSError(f"Could not reach {target.name} at {target.url}: {type(exc).__name__}") from exc
 
-    if response.status_code in {401, 403}:
-        session.close()
-        raise FortiOSError(
-            f"{target.name} rejected the API token (http={response.status_code}). "
-            "Check that the token is correct and that this host is in its trusted-host list."
-        )
-    if response.status_code != 200:
-        session.close()
-        raise FortiOSError(f"{target.name} returned http={response.status_code} during authentication")
-    return session
+        if response.status_code in {401, 403}:
+            raise FortiOSError(
+                f"{target.name} rejected the API token (http={response.status_code}). "
+                "Check that the token is correct and that this host is in its trusted-host list."
+            )
+        if response.status_code != 200:
+            raise FortiOSError(f"{target.name} returned http={response.status_code} during authentication")
+        handed_over = True
+        return session
+    finally:
+        if not handed_over:
+            session.close()
+
+
+def resolve_vdom(target: FortiGateTarget, vdom: str | None = None) -> str:
+    """Work out which virtual domain a call will actually be scoped to.
+
+    Tools report this rather than `target.vdom`. On a multi-VDOM appliance the
+    two differ the moment a caller overrides, and a response that answers from
+    one vdom while labelling itself with another is a mislabelled join at the
+    top of the payload, which is harder to catch than a missing answer.
+
+    A blank or whitespace override means "no override" rather than "the empty
+    vdom", since that is what an LLM filling in an optional string argument
+    tends to produce.
+    """
+    chosen = (vdom or "").strip()
+    return chosen or target.vdom
+
+
+def use_vdom(api: FortiGateAPI, vdom: str | None) -> None:
+    """Scope every subsequent read on this session to a different vdom.
+
+    The vdom is a per-request query parameter rather than a property of the
+    session, which is why this is separate from :func:`connect` instead of an
+    argument to it. Binding it at connect time would imply a session belongs to
+    one vdom, and it does not.
+
+    Passing nothing leaves the target's configured vdom in place.
+    """
+    chosen = (vdom or "").strip()
+    if chosen:
+        api.fortigate.vdom = chosen
 
 
 @contextmanager
@@ -162,6 +215,10 @@ def connect(target: FortiGateTarget) -> Iterator[FortiGateAPI]:
     With username and password the library performs a full login per call, which
     writes an admin login event to the appliance event log each time. A chatty
     model can produce a lot of those, which is one more reason to prefer a token.
+
+    Reads are scoped to the target's configured vdom. Call :func:`use_vdom` on
+    the yielded object to point them somewhere else; the vdom rides on each
+    request rather than on the session, so it can change mid-block.
     """
     kwargs: dict[str, Any] = {
         "host": target.host,
@@ -223,6 +280,51 @@ def _rows(body: Any, url: str) -> list[dict[str, Any]]:
     raise FortiOSError(f"Unexpected results shape from {url}: {type(results).__name__}")
 
 
+def requested_vdom(api: FortiGateAPI) -> str | None:
+    """Report which vdom this session is currently scoping reads to, if it says."""
+    return getattr(getattr(api, "fortigate", None), "vdom", None)
+
+
+def _label(api: FortiGateAPI, path: str) -> str:
+    """Error label naming both the endpoint and the vdom it was asked of.
+
+    Measured on 7.0.14: a vdom that does not exist answers HTTP 424, which is
+    also what an endpoint with an unmet dependency answers. Without the vdom in
+    the message the two are indistinguishable, and a typo in a vdom name reads
+    as a broken endpoint.
+    """
+    vdom = requested_vdom(api)
+    return f"GET {path}" if vdom is None else f"GET {path} (vdom={vdom!r})"
+
+
+def _answered_vdom(body: Any) -> str | None:
+    """Read back the vdom the appliance answered for, or None when it did not say."""
+    return body.get("vdom") if isinstance(body, dict) else None
+
+
+def _check_vdom(api: FortiGateAPI, body: Any, path: str) -> str | None:
+    """Raise unless the vdom that answered is the vdom that was asked.
+
+    Every cmdb and monitor endpoint this server reads names its vdom in the
+    response envelope, verified across all seventeen paths on FWF61E / 7.0.14.
+    So the vdom a tool reports need not be assumed from what was requested; it
+    can be checked against what replied.
+
+    The failure this prevents is a response labelled `vdom: dmz` carrying rows
+    from `root`, which no reader can detect from the payload. Silence from the
+    appliance is not treated as disagreement, because an unstated vdom is no
+    evidence either way.
+    """
+    answered = _answered_vdom(body)
+    asked = requested_vdom(api)
+    if answered is not None and asked is not None and answered != asked:
+        raise FortiOSError(
+            f"{path} was requested for vdom {asked!r} but the appliance answered for {answered!r}. "
+            "Refusing to attribute these rows to the wrong virtual domain."
+        )
+    return answered
+
+
 def fetch_table(api: FortiGateAPI, path: str) -> list[dict[str, Any]]:
     """Read a cmdb table, raising on any status other than 200.
 
@@ -234,8 +336,10 @@ def fetch_table(api: FortiGateAPI, path: str) -> list[dict[str, Any]]:
     vdom scoping, the bearer header, and the per-request timeout.
     """
     response = api.fortigate.get(path)
-    check_response(response, f"GET {path}")
-    return _rows(response.json(), path)
+    check_response(response, _label(api, path))
+    body = response.json()
+    _check_vdom(api, body, path)
+    return _rows(body, path)
 
 
 def fetch_envelope(api: FortiGateAPI, path: str) -> dict[str, Any]:
@@ -247,10 +351,11 @@ def fetch_envelope(api: FortiGateAPI, path: str) -> dict[str, Any]:
     serial appears to be missing from the API until you read the raw response.
     """
     response = api.fortigate.get(path)
-    check_response(response, f"GET {path}")
+    check_response(response, _label(api, path))
     body = response.json()
     if not isinstance(body, dict):
         raise FortiOSError(f"Unexpected response shape from {path}: {type(body).__name__}")
+    _check_vdom(api, body, path)
     return body
 
 
@@ -275,9 +380,19 @@ def fetch_monitor(api: FortiGateAPI, path: str) -> MonitorResult:
         return MonitorResult([], "error", f"http={status_code}")
 
     try:
-        return MonitorResult(_rows(response.json(), path), "ok")
+        body = response.json()
+        rows = _rows(body, path)
     except (FortiOSError, ValueError) as exc:
         return MonitorResult([], "error", str(exc)[:120])
+
+    answered = _answered_vdom(body)
+    asked = requested_vdom(api)
+    if answered is not None and asked is not None and answered != asked:
+        # Rows dropped on purpose. Handing back live state attributed to the
+        # wrong virtual domain is worse than handing back none, because a live
+        # tool's caller has no other way to notice.
+        return MonitorResult([], "wrong_vdom", f"asked {asked!r}, answered {answered!r}", answered)
+    return MonitorResult(rows, "ok", None, answered)
 
 
 def fetch_object_usage(api: FortiGateAPI, q_path: str, q_name: str, mkey: str) -> MonitorResult:

@@ -15,6 +15,7 @@ from mcfortigate.fortios import (
     fortios_bool,
     interface_ip_to_cidr,
     is_internal_interface,
+    mac_fragment_digits,
     member_names,
     normalize_mac,
     route_destination,
@@ -373,3 +374,164 @@ class TestProtocolNamingIsConsistent:
     def test_port_keys_stay_lowercase_for_lookup(self):
         summary = summarize_service({"name": "HTTP", "protocol": "TCP/UDP/SCTP", "tcp-portrange": "80"})
         assert summary["ports"] == {"tcp": "80"}
+
+
+class TestMacSeparatorNormalization:
+    """M3. Separators differ between vendors and sometimes between endpoints.
+
+    `find_device` joins the wifi, DHCP, and ARP tables on MAC and matches an
+    operator's query against them. Lowercasing alone leaves the join keyed on
+    whatever punctuation each source happened to use, so one source spelling a
+    MAC `aa-bb-cc-dd-ee-ff` while another spells it `aa:bb:cc:dd:ee:ff` means
+    the join matches nothing and the device is reported as unknown. Silently.
+    """
+
+    def test_dash_separated_becomes_colon_separated(self):
+        assert normalize_mac("AA-BB-CC-DD-EE-FF") == "aa:bb:cc:dd:ee:ff"
+
+    def test_cisco_dotted_becomes_colon_separated(self):
+        assert normalize_mac("AABB.CCDD.EEFF") == "aa:bb:cc:dd:ee:ff"
+
+    def test_bare_hex_becomes_colon_separated(self):
+        assert normalize_mac("aabbccddeeff") == "aa:bb:cc:dd:ee:ff"
+
+    def test_already_canonical_is_unchanged(self):
+        assert normalize_mac("20:47:47:7d:db:7b") == "20:47:47:7d:db:7b"
+
+    def test_every_spelling_of_one_address_collapses_to_one_key(self):
+        """The property the join actually depends on."""
+        spellings = ["AA:BB:CC:DD:EE:FF", "aa-bb-cc-dd-ee-ff", "AABB.CCDD.EEFF", "aabbccddeeff"]
+        assert len({normalize_mac(spelling) for spelling in spellings}) == 1
+
+    def test_non_mac_text_is_not_reshaped(self):
+        """Nothing may be invented from a value that is not a MAC.
+
+        A hostname or a truncated field reaching this function must come back
+        recognizable, not rearranged into something that looks like hardware.
+        """
+        assert normalize_mac("guest-laptop") == "guest-laptop"
+        assert normalize_mac("unknown") == "unknown"
+        assert normalize_mac("192.168.1.47") == "192.168.1.47"
+
+    def test_empty_and_none_stay_empty(self):
+        assert normalize_mac("") == ""
+        assert normalize_mac(None) == ""
+
+
+class TestMacFragmentDigits:
+    """Separator-insensitive matching for a partial MAC typed by an operator.
+
+    The query side of the same join. Someone reading a MAC off a Cisco switch
+    types `2047.477d.db7b`; someone reading it off a Windows box types
+    `20-47-47-7D-DB-7B`. Both must find the ARP row that FortiOS spells
+    `20:47:47:7d:db:7b`.
+    """
+
+    @pytest.mark.parametrize(
+        ("query", "digits"),
+        [
+            ("20-47-47-7d-db-7b", "2047477ddb7b"),
+            ("2047.477d.db7b", "2047477ddb7b"),
+            ("20:47:47:7d:db:7b", "2047477ddb7b"),
+            ("2047477DDB7B", "2047477ddb7b"),
+            ("7d-db-7b", "7ddb7b"),
+            ("AA:BB", "aabb"),
+        ],
+    )
+    def test_mac_shaped_input_yields_digits(self, query: str, digits: str):
+        assert mac_fragment_digits(query) == digits
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "192.168.1.47",  # an IP is all hex digits and dots, and must not pass
+            "10.0.0.1",
+            "fe80::1",
+            "guest-laptop",
+            "",
+            "a",  # too few digits to distinguish anything
+            "a:b",
+        ],
+    )
+    def test_non_mac_input_is_rejected(self, query: str):
+        """An IPv4 address is the dangerous case: dots and hex digits only.
+
+        Letting one through would let a query for an IP match an unrelated
+        device by its MAC, which is a confidently wrong answer rather than a
+        missing one.
+        """
+        assert mac_fragment_digits(query) is None
+
+
+class TestSecondaryIpsAreNotSilentlyDropped:
+    """M9. The walrus in the old comprehension doubled as the filter test.
+
+    `[cidr for entry in rows if (cidr := convert(entry))]` keeps a row only
+    when the converted value is truthy, which is the same family of mistake as
+    `bool("disable")`: the test is on the value rather than on whether the
+    conversion succeeded. It also threw away unconvertible rows without trace,
+    so an interface carrying a secondary address this code cannot parse looked
+    identical to one carrying none.
+    """
+
+    def test_parsable_secondaries_are_listed(self):
+        summary = summarize_interface(
+            {"name": "lan", "ip": "10.0.0.1 255.255.255.0", "secondaryip": [{"ip": "10.0.1.1 255.255.255.0"}]}
+        )
+        assert summary["secondary_ips"] == ["10.0.1.1/24"]
+        assert "secondary_ips_unreadable" not in summary
+
+    def test_unparsable_secondary_is_reported_rather_than_dropped(self):
+        summary = summarize_interface(
+            {
+                "name": "lan",
+                "ip": "10.0.0.1 255.255.255.0",
+                "secondaryip": [{"ip": "10.0.1.1 255.255.255.0"}, {"ip": "not-an-address"}],
+            }
+        )
+        assert summary["secondary_ips"] == ["10.0.1.1/24"]
+        assert summary["secondary_ips_unreadable"] == 1
+
+    def test_an_interface_whose_only_secondary_is_unreadable_still_says_so(self):
+        """The case the old code made invisible."""
+        summary = summarize_interface({"name": "lan", "secondaryip": [{"ip": "garbage"}]})
+        assert "secondary_ips" not in summary
+        assert summary["secondary_ips_unreadable"] == 1
+
+    def test_no_secondaries_reports_nothing(self):
+        """Absent beats zero. A count of zero invites a reader to wonder."""
+        summary = summarize_interface({"name": "lan", "ip": "10.0.0.1 255.255.255.0"})
+        assert "secondary_ips" not in summary
+        assert "secondary_ips_unreadable" not in summary
+
+
+class TestInterfaceCidrNeverReturnsAFalsyString:
+    """The contract the old walrus-as-filter silently depended on.
+
+    `[cidr for entry in rows if (cidr := convert(entry))]` is correct only while
+    `convert` never returns a value that is both legitimate and falsy. Nothing
+    stated that, nothing enforced it, and the comprehension would have started
+    dropping real addresses the day it stopped being true. The loop that
+    replaced it tests `is not None` instead, so it no longer matters; this pins
+    the contract anyway, because the next person to reach for a walrus here
+    deserves to find out from a test rather than from a missing interface.
+    """
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "203.0.113.10 255.255.255.0",
+            "10.0.0.1 255.255.255.255",
+            "10.0.0.1 0.0.0.0",
+            "192.0.2.1 255.255.0.0",
+        ],
+    )
+    def test_a_successful_conversion_is_always_truthy(self, field: str):
+        result = interface_ip_to_cidr(field)
+        assert result is not None
+        assert result, "a falsy success value would be dropped by any truthiness filter"
+
+    @pytest.mark.parametrize("field", ["", "garbage", "0.0.0.0 0.0.0.0", "10.0.0.1", "a b"])
+    def test_a_failed_conversion_is_none_not_empty_string(self, field: str):
+        """Failure must be None so callers can tell it from a legitimate value."""
+        assert interface_ip_to_cidr(field) is None
