@@ -19,20 +19,35 @@ finds anything useful.
 So the tools here are shaped around the questions operators actually ask rather
 than around the endpoints FortiOS happens to expose. Three examples.
 
-**"Is this address object safe to delete?"** is `find_references`. Behind it are
-five REST calls covering policies on both the source and service sides, address
-and service group membership, virtual IPs, and static routes, collapsed into one
-answer.
+**"Is this address object safe to delete?"** is `find_references`, and it is the
+tool that shaped the rest of this server.
 
-That answer is deliberately three-valued rather than a boolean. A token scoped
-to firewall objects gets 403 on the routing table, and the client library turns
-every error status into an empty list, so a naive implementation counts zero
-references and reports that a heavily-used object is safe to delete. Doing
-least privilege correctly makes that *more* likely, not less. So the tool reads
-each source with its status checked, reports `verdict` as `no_references`,
-`referenced`, or `indeterminate`, names what it could not read in
-`sources_checked`, and omits `safe_to_delete` entirely unless every source
-answered.
+The obvious implementation scans the tables that obviously hold references:
+policies, groups, virtual IPs, routes. The appliance disagrees about what
+"obviously" covers. Asked directly, FortiOS 7.0.14 reports 74 tables that can
+reference a firewall address and 234 that can reference an interface. An object
+used only by a web-proxy profile comes back from the obvious implementation as
+unreferenced, which is a wrong answer in the direction that destroys data.
+
+So the authority here is the appliance's own reference lookup, the one behind
+the reference counter in its web UI. Two things about it are worth knowing.
+Every row it returns carries `reference_count: 0`, genuine references included,
+so the presence of a row is the signal and the count is a trap. And asked about
+a key that is absent from the table you named, it answers success with an empty
+list, so guessing the wrong table reports an in-use object as free. Querying
+the address table about `wan1` finds nothing while the interface table finds
+two references, which is why this tool works out what kind of object a name
+refers to before it asks.
+
+The answer is five-valued rather than a boolean, because there are genuinely
+five things that can be true. Beyond `referenced` and `no_references` there is
+`object_not_found` for a name that matches nothing,
+`no_references_in_checked_scopes` for when the authoritative lookup was
+unavailable and only the partial scan ran, and `indeterminate` for when the
+scan itself was incomplete. `safe_to_delete` appears only for the first two.
+A token scoped to firewall objects gets 403 on the routing table, and the
+client library turns every error status into an empty list, so doing least
+privilege correctly makes a false clean bill of health *more* likely, not less.
 
 **"What is 192.168.1.47?"** is `find_device`. It searches the wireless client
 list, the DHCP lease table, and the ARP table, then merges what each one knows

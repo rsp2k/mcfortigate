@@ -511,6 +511,36 @@ def resolve_route_destinations(
     return summaries
 
 
+def describe_usage_row(row: dict[str, Any], looked_up_as: str) -> dict[str, Any]:
+    """Make one `currently_using` row from the usage endpoint readable.
+
+    The appliance names the referencing table as a `path` and `name` pair, which
+    reads better rejoined, and identifies the referencing object by its primary
+    key. The `attribute` says which field of that object holds the reference,
+    which is what distinguishes a policy using an address as its source from one
+    using it as its destination.
+
+    `reference_count` is deliberately not carried through. Hardware sets it to
+    zero on rows that are genuine references, so a reader who trusted it would
+    conclude the opposite of what the row means.
+
+    >>> describe_usage_row({"path": "firewall", "name": "policy", "mkey": "1",
+    ...                     "attribute": "srcaddr", "reference_count": 0}, "address")
+    {'table': 'firewall.policy', 'object': '1', 'looked_up_as': 'address', 'attribute': 'srcaddr'}
+    """
+    path = str(row.get("path") or "").strip()
+    name = str(row.get("name") or "").strip()
+    table = ".".join(part for part in (path, name) if part)
+    described: dict[str, Any] = {
+        "table": table or "unknown",
+        "object": row.get("mkey"),
+        "looked_up_as": looked_up_as,
+    }
+    if row.get("attribute"):
+        described["attribute"] = row["attribute"]
+    return described
+
+
 def normalize_mac(value: str) -> str:
     """Lowercase a MAC address for comparison.
 

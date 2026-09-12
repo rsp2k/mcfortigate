@@ -21,7 +21,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
 
 import requests
 from fortigate_api import FortiGateAPI
@@ -49,6 +49,26 @@ MON_WIFI_CLIENTS = "api/v2/monitor/wifi/client"
 MON_DHCP_LEASES = "api/v2/monitor/system/dhcp"
 MON_ARP = "api/v2/monitor/network/arp"
 MON_ROUTING_TABLE = "api/v2/monitor/router/ipv4"
+MON_OBJECT_USAGE = "api/v2/monitor/system/object/usage"
+
+#: The object kinds a name can be resolved against, each pairing the cmdb table
+#: that defines the object with the `q_path` / `q_name` the usage endpoint wants
+#: for it.
+#:
+#: The pairing has to be right. `monitor/system/object/usage` answers HTTP 200
+#: with an empty `currently_using` list when the key is absent from the table it
+#: was asked about, so a mismatched pair reports an in-use object as
+#: unreferenced. Measured on 7.0.14: asking the address table about `wan1`
+#: returns nothing, while asking the interface table about it returns two
+#: references.
+OBJECT_KINDS: tuple[tuple[str, str, str, str, str], ...] = (
+    ("address", "addresses", ADDRESSES, "firewall", "address"),
+    ("address group", "address_groups", ADDRESS_GROUPS, "firewall", "addrgrp"),
+    ("service", "services", SERVICES, "firewall.service", "custom"),
+    ("service group", "service_groups", SERVICE_GROUPS, "firewall.service", "group"),
+    ("virtual IP", "vips", VIPS, "firewall", "vip"),
+    ("interface", "interfaces", INTERFACES, "system", "interface"),
+)
 
 
 class MonitorResult:
@@ -258,3 +278,26 @@ def fetch_monitor(api: FortiGateAPI, path: str) -> MonitorResult:
         return MonitorResult(_rows(response.json(), path), "ok")
     except (FortiOSError, ValueError) as exc:
         return MonitorResult([], "error", str(exc)[:120])
+
+
+def fetch_object_usage(api: FortiGateAPI, q_path: str, q_name: str, mkey: str) -> MonitorResult:
+    """Ask the appliance what references one object.
+
+    This is what the web UI's reference counter calls, and it is authoritative
+    in a way that scanning tables is not: it knows every table that can hold a
+    reference, which on 7.0.14 is seventy-four of them for a firewall address.
+
+    The single row it returns carries `can_use`, the tables that could reference
+    an object of this kind, and `currently_using`, the ones that do.
+
+    Two cautions. The caller must pass a `q_path` / `q_name` that matches the
+    table the object actually lives in, because a mismatch is answered with an
+    empty list rather than an error. And every `currently_using` row carries
+    `reference_count: 0` on real hardware, genuine references included, so the
+    presence of a row is the signal and the count is not.
+
+    Names are URL-encoded here because object names legitimately contain
+    spaces, as with the stock `G Suite` address group.
+    """
+    query = urlencode({"q_path": q_path, "q_name": q_name, "mkey": mkey})
+    return fetch_monitor(api, f"{MON_OBJECT_USAGE}?{query}")

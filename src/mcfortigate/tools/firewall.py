@@ -10,17 +10,20 @@ from mcfortigate.annotations import read_only
 from mcfortigate.client import (
     ADDRESS_GROUPS,
     ADDRESSES,
+    OBJECT_KINDS,
     POLICIES,
     SERVICE_GROUPS,
     SERVICES,
     STATIC_ROUTES,
     VIPS,
     connect,
+    fetch_object_usage,
     fetch_table,
 )
 from mcfortigate.config import TargetRegistry
 from mcfortigate.fortios import (
     FortiOSError,
+    describe_usage_row,
     member_names,
     summarize_address,
     summarize_policy,
@@ -208,39 +211,59 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         """Find what references an address, service, or interface, before changing it.
 
         This answers the question that precedes every firewall change, which is
-        whether something is safe to touch. It reads policies on both the address
-        and service sides, address and service group membership, virtual IPs, and
-        static routes.
+        whether something is safe to touch.
 
-        Read `verdict` rather than assuming, and read `sources_checked` when it is
-        indeterminate. `safe_to_delete` is present only when every source was
-        readable, because a table this tool could not read cannot support a claim
-        that nothing references the object. A denied read is the likely outcome
-        for a correctly least-privileged token, so an indeterminate answer is
-        normal rather than exceptional.
+        The authority is the appliance itself. FortiOS exposes the same
+        reference lookup its web UI uses, which knows every table that can hold
+        a reference, seventy-four of them for a firewall address on 7.0.14. This
+        tool asks that endpoint and reports what it says in `references`. It
+        also scans policies, groups, virtual IPs, and static routes directly,
+        because those yield readable detail the endpoint does not, such as a
+        policy's name and action.
 
-        Coverage is not exhaustive even when every source is readable. Proxy
-        policies, local-in policies, SD-WAN rules, zones, IP pools, and DHCP
-        server settings can all reference an object and are not consulted, and
-        group membership is not expanded transitively. `checked_scopes` lists
-        what was actually examined.
+        Read `verdict` rather than inferring from a count:
+
+        - `referenced`, something points at it
+        - `no_references`, the appliance confirmed nothing does
+        - `no_references_in_checked_scopes`, the authoritative lookup was
+          unavailable and a partial scan found nothing, which is a fact about
+          four tables rather than about the appliance
+        - `object_not_found`, no address, group, service, virtual IP, or
+          interface by this name exists, so the question is probably a typo
+        - `indeterminate`, something needed could not be read
+
+        `safe_to_delete` appears only for the first two, because a table this
+        tool could not read cannot support a claim that nothing references the
+        object. A denied read is the likely outcome for a correctly
+        least-privileged token, so an incomplete answer is normal rather than
+        exceptional, and `sources_checked` names what failed.
+
+        Group membership is not expanded transitively: an object inside a group
+        that a policy uses is reported as referenced by the group, not by the
+        policy.
 
         Args:
-            object_name: Exact name of the address, group, service, or interface.
+            object_name: Exact name of the address, group, service, virtual IP,
+                or interface. Matching is exact, not a search.
             target: Which FortiGate to query. Optional when only one is configured.
 
         """
         fgt = registry.resolve(target)
         sources: dict[str, str] = {}
+        cached: dict[str, list[dict[str, Any]]] = {}
 
         def read(label: str, path: str) -> list[dict[str, Any]]:
-            """Read one source, recording its status rather than raising."""
+            """Read one source once, recording its status rather than raising."""
+            if path in cached:
+                return cached[path]
             try:
                 rows = fetch_table(api, path)
             except FortiOSError as exc:
                 sources[label] = exc.summary()
+                cached[path] = []
                 return []
             sources[label] = "ok"
+            cached[path] = rows
             return rows
 
         with connect(fgt) as api:
@@ -249,6 +272,44 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             raw_svc_groups = read("service_groups", SERVICE_GROUPS)
             raw_vips = read("vips", VIPS)
             raw_routes = read("routes", STATIC_ROUTES)
+
+            # Work out which table defines this name before asking the usage
+            # endpoint about it. The endpoint cannot tell us: asked about a key
+            # that is absent from the table named, it answers 200 and an empty
+            # list, exactly as it does for an object that genuinely has no
+            # references.
+            kinds: list[tuple[str, str, str]] = []
+            identification_failed = False
+            for kind, label, table_path, q_path, q_name in OBJECT_KINDS:
+                rows = read(label, table_path)
+                if sources.get(label) != "ok":
+                    identification_failed = True
+                    continue
+                if any(row.get("name") == object_name for row in rows):
+                    kinds.append((kind, q_path, q_name))
+
+            # With no kind identified, sweep every candidate rather than give
+            # up. Identification can fail because a table was denied, and a
+            # reference found under some kind is still a reference.
+            to_query = kinds or [(kind, q_path, q_name) for kind, _, _, q_path, q_name in OBJECT_KINDS]
+
+            usage_rows: list[dict[str, Any]] = []
+            usage_failures: list[str] = []
+            candidate_tables = 0
+            for kind, q_path, q_name in to_query:
+                answer = fetch_object_usage(api, q_path, q_name, object_name)
+                if not answer.ok:
+                    usage_failures.append(f"{kind}: {answer.describe()}")
+                    continue
+                body = answer.rows[0] if answer.rows else {}
+                candidate_tables = max(candidate_tables, len(body.get("can_use") or []))
+                for row in body.get("currently_using") or []:
+                    if isinstance(row, dict):
+                        usage_rows.append(describe_usage_row(row, kind))
+
+            # Partial success is not success. If any query failed, the union is
+            # a lower bound and must not underwrite a clean verdict.
+            sources["object_usage"] = "ok" if not usage_failures else "; ".join(usage_failures)
 
         policy_hits: list[dict[str, Any]] = []
         for raw in raw_policies:
@@ -301,40 +362,70 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                     }
                 )
 
-        total = len(policy_hits) + len(group_hits) + len(vip_hits) + len(route_hits)
+        scanned = len(policy_hits) + len(group_hits) + len(vip_hits) + len(route_hits)
         unreadable = [label for label, status in sources.items() if status != "ok"]
+        usage_ok = not usage_failures
+        # The authority failing and the scan failing are different problems, and
+        # lumping them together makes the milder one unreachable. Every usage
+        # failure lands in `unreadable`, so a verdict keyed on that alone can
+        # never distinguish "we looked everywhere we could" from "we could not
+        # look properly at all".
+        scan_unreadable = [label for label in unreadable if label != "object_usage"]
 
-        if unreadable:
-            verdict = "indeterminate"
-        elif total:
+        # Order matters. A confirmed reference outranks every doubt, since it
+        # settles the only question that can cause damage. Below that, the
+        # appliance's own answer outranks our partial scan, so a denied detail
+        # table does not weaken a verdict the authoritative source already gave.
+        if usage_rows or scanned:
             verdict = "referenced"
-        else:
+        elif not kinds and not identification_failed:
+            verdict = "object_not_found"
+        elif usage_ok:
             verdict = "no_references"
+        elif not scan_unreadable:
+            verdict = "no_references_in_checked_scopes"
+        else:
+            verdict = "indeterminate"
 
         result: dict[str, Any] = {
             "target": fgt.name,
             "vdom": fgt.vdom,
             "object": object_name,
             "verdict": verdict,
-            "total_references": total,
+            "total_references": len(usage_rows) if usage_ok else scanned,
+            "resolved_as": [kind for kind, _, _ in kinds],
+            "references": usage_rows,
             "sources_checked": sources,
-            "checked_scopes": [
-                "firewall policies",
-                "address groups",
-                "service groups",
-                "virtual IPs",
-                "static routes",
-            ],
             "policies": policy_hits,
             "groups": group_hits,
             "vips": vip_hits,
             "routes": route_hits,
         }
-        # Only claim decidability when every source answered. Omitting the key
-        # rather than setting it false forces a reader to consult the verdict,
-        # where a false would invite it to stop.
-        if not unreadable:
-            result["safe_to_delete"] = total == 0
+        # Only meaningful when we know what kind of object this is. On a blind
+        # sweep it would be the largest count across six unrelated kinds, which
+        # describes nothing.
+        if usage_ok and candidate_tables and kinds:
+            result["candidate_tables"] = candidate_tables
+
+        # Claim decidability only where it was earned. Omitting the key rather
+        # than setting it false forces a reader to consult the verdict, where a
+        # false would invite it to stop reading.
+        if verdict == "no_references":
+            result["safe_to_delete"] = True
+        elif verdict == "referenced":
+            result["safe_to_delete"] = False
+        elif verdict == "object_not_found":
+            result["note"] = (
+                f"No address, group, service, virtual IP, or interface named {object_name!r} "
+                "exists on this appliance, so this answer is about a name rather than an "
+                "object. Check the spelling."
+            )
+        elif verdict == "no_references_in_checked_scopes":
+            result["note"] = (
+                "The appliance's own reference lookup was unavailable, so this covers only "
+                "policies, groups, virtual IPs, and static routes. FortiOS reports many more "
+                "tables that can hold a reference, and they were not consulted."
+            )
         else:
             result["note"] = (
                 f"Could not read: {', '.join(unreadable)}. The reference count is a lower bound "
