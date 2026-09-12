@@ -21,6 +21,7 @@ from mcfortigate.client import (
     fetch_table,
 )
 from mcfortigate.config import TargetRegistry
+from mcfortigate.expansion import MAX_EXPANSION_DEPTH, expand
 from mcfortigate.fortios import (
     FortiOSError,
     describe_usage_row,
@@ -302,9 +303,21 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         `references` when reporting what must be changed before a delete, and
         the detail lists when naming the objects an operator has to open.
 
-        Group membership is not expanded transitively: an object inside a group
-        that a policy uses is reported as referenced by the group, not by the
-        policy.
+        Containers are walked through, and the results are kept separate.
+        `references` holds what the appliance named directly and every row
+        carries `depth: 0`. `transitive_references` holds what was reached
+        through an address group, a service group, a zone, or a switch: each
+        row carries the `depth` it was found at and a `via` chain of the
+        container names that led to it. The distinction is the remedy. A direct
+        reference is removed from the object holding it; a transitive one is
+        removed by editing a container or a member list, and the policy that
+        stops matching is not the object you edit.
+
+        `expansion` reports how far the walk got. `status` is `complete` when
+        the chain ran out, `depth_capped` when it hit the ceiling with
+        containers still unopened, which are then named in `unexpanded`, and
+        `incomplete` when something along the way could not be read. Only
+        `complete` means the transitive list is the whole blast radius.
 
         Args:
             object_name: Exact name of the address, group, service, virtual IP,
@@ -369,11 +382,35 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
                 candidate_tables = max(candidate_tables, len(body.get("can_use") or []))
                 for row in body.get("currently_using") or []:
                     if isinstance(row, dict):
-                        usage_rows.append(describe_usage_row(row, kind))
+                        usage_rows.append({**describe_usage_row(row, kind), "depth": 0})
 
             # Partial success is not success. If any query failed, the union is
             # a lower bound and must not underwrite a clean verdict.
             sources["object_usage"] = "ok" if not usage_failures else "; ".join(usage_failures)
+
+            def expansion_lookup(
+                q_path: str, q_name: str, kind: str, name: str
+            ) -> tuple[list[dict[str, Any]], str | None]:
+                """Ask the same endpoint about a container, for the walk to continue from."""
+                answer = fetch_object_usage(api, q_path, q_name, name)
+                if not answer.ok:
+                    return [], answer.describe()
+                body = answer.rows[0] if answer.rows else {}
+                return [
+                    describe_usage_row(row, kind) for row in body.get("currently_using") or [] if isinstance(row, dict)
+                ], None
+
+            # The endpoint answers about the object it was handed and nothing
+            # else, so a member of a group hears about the group and never about
+            # the policy the group is in. That policy is the thing that stops
+            # matching, which makes it the answer the question was really after.
+            expansion = expand(
+                usage_rows,
+                object_name,
+                expansion_lookup,
+                seeds_complete=not usage_failures,
+            )
+            sources["object_usage_expansion"] = "; ".join(expansion.failures) if expansion.failures else "ok"
 
         policy_hits: list[dict[str, Any]] = []
         for raw in raw_policies:
@@ -433,8 +470,11 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         # lumping them together makes the milder one unreachable. Every usage
         # failure lands in `unreadable`, so a verdict keyed on that alone can
         # never distinguish "we looked everywhere we could" from "we could not
-        # look properly at all".
-        scan_unreadable = [label for label in unreadable if label != "object_usage"]
+        # look properly at all". The expansion walk is part of the authority
+        # rather than part of the scan, so it is excluded here for the same
+        # reason the direct lookup is.
+        authority = {"object_usage", "object_usage_expansion"}
+        scan_unreadable = [label for label in unreadable if label not in authority]
 
         # Order matters. A confirmed reference outranks every doubt, since it
         # settles the only question that can cause damage. Below that, the
@@ -459,6 +499,9 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             "total_references": len(usage_rows) if usage_ok else scanned,
             "resolved_as": [kind for kind, _, _ in kinds],
             "references": usage_rows,
+            "total_transitive_references": len(expansion.rows),
+            "transitive_references": expansion.rows,
+            "expansion": expansion.describe(),
             "sources_checked": sources,
             "policies": policy_hits,
             "groups": group_hits,
@@ -474,25 +517,48 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         # Claim decidability only where it was earned. Omitting the key rather
         # than setting it false forces a reader to consult the verdict, where a
         # false would invite it to stop reading.
+        #
+        # Nothing here consults the expansion status, and that is deliberate.
+        # There is no container to walk unless the direct lookup already named
+        # one, and a direct hit is a reference, so a truncated walk always
+        # arrives beside a `referenced` verdict. An extra clause guarding
+        # against a state no input can produce would report as covered while
+        # proving nothing, which is how a dead branch got into this same verdict
+        # logic once before. The invariant is pinned by a test instead.
+        notes: list[str] = []
         if verdict == "no_references":
             result["safe_to_delete"] = True
         elif verdict == "referenced":
             result["safe_to_delete"] = False
         elif verdict == "object_not_found":
-            result["note"] = (
+            notes.append(
                 f"No address, group, service, virtual IP, or interface named {object_name!r} "
                 "exists on this appliance, so this answer is about a name rather than an "
                 "object. Check the spelling."
             )
         elif verdict == "no_references_in_checked_scopes":
-            result["note"] = (
+            notes.append(
                 "The appliance's own reference lookup was unavailable, so this covers only "
                 "policies, groups, virtual IPs, and static routes. FortiOS reports many more "
                 "tables that can hold a reference, and they were not consulted."
             )
         else:
-            result["note"] = (
+            notes.append(
                 f"Could not read: {', '.join(unreadable)}. The reference count is a lower bound "
                 "and no conclusion about deletion safety is possible."
             )
+
+        if expansion.status == "depth_capped":
+            notes.append(
+                f"Container expansion stopped after {MAX_EXPANSION_DEPTH} levels with "
+                f"{', '.join(expansion.unexpanded)} still unopened, so anything reachable only "
+                "through those is missing from the transitive list."
+            )
+        elif expansion.status == "incomplete":
+            notes.append(
+                "Container expansion was incomplete, so the transitive list is a lower bound: "
+                f"{sources['object_usage_expansion']}."
+            )
+        if notes:
+            result["note"] = " ".join(notes)
         return result
