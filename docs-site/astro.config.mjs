@@ -107,6 +107,7 @@ export default defineConfig({
           label: 'How-to guides',
           items: [
             { slug: 'guides/claude-code' },
+            { slug: 'guides/dgx-spark' },
             { slug: 'guides/several-appliances' },
             { slug: 'guides/find-a-device' },
             { slug: 'guides/before-you-delete' },

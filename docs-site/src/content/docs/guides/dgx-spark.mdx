@@ -1,0 +1,202 @@
+---
+title: Fully local — mcfortigate and a model on a DGX Spark
+description: Run the model on your own desk so your firewall configuration, lease tables, and the names of everyone on your network never reach someone else's inference log.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This server cannot change your firewall. That is
+[structural rather than a setting](/explanation/read-only/), and it removes an
+entire category of risk.
+
+It does not remove the other one. mcfortigate can read your whole
+configuration and hand it to whichever model you pointed it at — every policy,
+every interface description, every lease. The only way to close *that* loop is
+for the model to be yours too.
+
+A [DGX Spark](https://dgx-spark.warehack.ing/), the GB10 Grace Blackwell
+desktop with 128 GB of unified memory, is enough machine to do it: the model
+runs on your desk, mcfortigate runs beside it, and the entire conversation
+about your firewall stays on your LAN.
+
+## What you would otherwise be sending
+
+Worth being specific, because *firewall config* sounds abstract and the actual
+contents are not.
+
+`find_device` exists to turn `192.168.1.47` into a person's laptop by name. The
+DHCP lease table is a continuously updated roster of everyone on your network
+and what they own — phones included, named by their owners. `list_policies`
+comments carry ticket numbers, vendor names, and the reason a temporary
+exception was granted and who asked for it. The interface list is your topology,
+pre-summarized, which is the reconnaissance phase of an attack already done.
+
+None of that is an argument against using a cloud model. It is an argument for
+knowing which one, and deciding deliberately. A lab box and a client's
+production edge are not the same decision.
+
+## 1. Serve a model on the Spark
+
+Follow the Spark site's
+[serve a local LLM](https://dgx-spark.warehack.ing/how-to/run-a-local-llm/)
+how-to. Ollama has native ARM64 and CUDA support and exposes an
+OpenAI-compatible API on port 11434.
+
+## 2. Pick a model for tool calling, not for prose
+
+The only property that matters here is whether the model **calls the right tool
+with valid arguments**: passes the `target` alias it was given rather than
+inventing one, reads the result before narrating it, and stops when it has an
+answer.
+
+That is not a given. A model that writes beautifully can still fabricate a
+plausible summary of a policy table it never actually fetched, and on a firewall
+a confident invented answer is worse than no answer.
+
+Two reasonable starting points, both comfortable in the Spark's memory budget
+at 4-bit:
+
+```bash
+ollama pull qwen3-coder:30b   # MoE, few active params — fast, agentic-tuned
+ollama pull gpt-oss:120b      # more headroom, still fits
+```
+
+<Aside type="caution" title="Context is the real budget here, and it is a trap">
+Firewall answers are chunky. A few hundred summarized policies runs to tens of
+thousands of tokens, and the instinct on seeing that is to crank `num_ctx`.
+
+Do the arithmetic first. The Spark site's
+[model residency explainer](https://dgx-spark.warehack.ing/explanation/model-residency/)
+documents a 256k default context turning an 18 GB model into a **122 GB** one.
+Context is not free, it is resident, and on a unified-memory box it competes
+with everything else you are running.
+
+Raise it deliberately to fit the ruleset you actually have, not to the maximum
+the model advertises.
+</Aside>
+
+It is worth knowing that this is only tractable because of how the tools are
+shaped. A raw FortiOS policy carries eighty-plus fields; the summarized form
+keeps roughly a dozen. That is [the whole design
+argument](/explanation/question-shaped-tools/), and on a local model with a
+finite memory budget it is the difference between a ruleset fitting in context
+and not.
+
+## 3. Install both on the Spark
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv isn't there yet
+uv tool install mcfortigate
+curl -fsSL https://opencode.ai/install | bash
+```
+
+mcfortigate has two dependencies and no compiled extensions of its own, so
+aarch64 is uneventful — `uv` resolves prebuilt wheels and there is nothing to
+build.
+
+## 4. Wire them together
+
+`~/.config/opencode/opencode.json`. The provider block points opencode at
+Ollama; the `mcp` block spawns mcfortigate over stdio.
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/qwen3-coder:30b",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": { "baseURL": "http://127.0.0.1:11434/v1" },
+      "models": { "qwen3-coder:30b": { "name": "Qwen3 Coder 30B" } }
+    }
+  },
+  "mcp": {
+    "fortigate": {
+      "type": "local",
+      "command": ["uvx", "mcfortigate"],
+      "enabled": true,
+      "environment": {
+        "FORTIGATE_HOST": "fgt.example.com",
+        "FORTIGATE_TOKEN": "your-token"
+      }
+    }
+  }
+}
+```
+
+Create the token as a read-only REST API admin with trusted hosts restricted to
+the Spark itself — [getting started](/tutorials/getting-started/) covers it.
+Trusted hosts is the control that matters, and a single-purpose machine on your
+desk makes it easy to set correctly.
+
+## 5. Let it flail against the real appliance
+
+This is where mcfortigate differs from tooling that can change things. There is
+no mockup lab here and none is needed: **nothing the model does can alter the
+firewall**, so the usual caution about earning write access does not apply.
+Point it at a real appliance and let it be wrong in public.
+
+Work it through a session and watch the mechanics rather than the prose:
+
+> "What FortiGates can you reach, and what is this one running?"
+
+> "Show me every enabled policy from an internal interface to wan1, in
+> evaluation order, as a table."
+
+> "Is the address object DMZ-SERVERS safe to delete?"
+
+> "What is 192.168.1.47?"
+
+What you are measuring:
+
+**Does it pass arguments correctly?** With one appliance configured, `target`
+can be omitted. With several it is required, and the error names the valid
+aliases — a good model reads that and corrects itself on the next call, a weak
+one guesses again.
+
+**Does it read `verdict` or does it skim?** `find_references` returns
+`no_references`, `referenced`, or `indeterminate`, and on `indeterminate` there
+is deliberately **no** `safe_to_delete` key to latch onto. A model that reports
+"safe to delete" from an indeterminate answer has told you something important
+about itself, for free, on a question where being wrong later would be
+expensive.
+
+**Does it respect evaluation order?** Policies come back ordered, each carrying
+an explicit `order` index. A model that re-sorts them by ID has destroyed the
+meaning of the ruleset while producing a tidier-looking table.
+
+**Does it distinguish live from configured?** Ask for the default route. The
+answer differs between `list_static_routes` and `get_routing_table` on a
+DHCP-addressed WAN, and
+[knowing which you asked for](/explanation/config-vs-live/) is the difference
+between an answer and a plausible sentence.
+
+If it stumbles, raise the quantization or move up a tier before blaming the
+tools. This is a measurement, not a vibe.
+
+## One limitation worth stating plainly
+
+mcfortigate speaks **stdio only**. There is no HTTP transport and no flag to
+enable one, so each client spawns its own short-lived process and you cannot
+stand up a single shared endpoint on the Spark for other machines to dial into.
+
+That costs less than it sounds. Sessions are opened per tool call rather than
+pooled, so a process that sits idle holds nothing open against the appliance.
+If you want to drive the Spark's setup from your laptop, reach the machine
+rather than the server — SSH, or Tailscale as the Spark site's
+[network access guide](https://dgx-spark.warehack.ing/how-to/network-access/)
+describes — and run opencode there.
+
+## Why this is worth the trouble
+
+A firewall is the thing you bought to decide what leaves your network. Reading
+its configuration into a cloud chat window is a decision about what leaves your
+network, made in the one place you were most careful about.
+
+This setup closes it. The model, the tools, the credential, and the appliance
+all sit inside one boundary you control, and the only thing crossing it is your
+own curiosity.
+
+More Spark operational lore — networking, clustering units, recovery — lives at
+[dgx-spark.warehack.ing](https://dgx-spark.warehack.ing/).
