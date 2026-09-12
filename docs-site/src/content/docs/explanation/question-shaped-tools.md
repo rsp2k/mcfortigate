@@ -120,6 +120,25 @@ free; this one has to notice them. That is the price of handling the
 [version-dependent field shapes](/explanation/fortios-quirks/#relational-fields-change-shape-by-version)
 rather than passing them through for the model to trip over.
 
+## Does the argument generalize
+
+It is fair to ask whether this shape is a FortiOS-specific accident. It is not,
+and the evidence is that the same approach was worth building a second time
+against completely different hardware.
+
+[mcidrac](https://mcidrac.warehack.ing) does this for Dell iDRAC over Redfish:
+the same question-shaped surface, the same refusal to hand a model raw vendor
+JSON, the same insistence on validating against real appliances rather than a
+schema. Different vendor, different protocol, and the same three problems —
+responses too noisy to reason over, questions that span endpoints, and vendor
+behaviours that fail silently.
+
+The one instructive difference is where the risk sits. mcidrac can power-cycle
+a server, so its design effort goes into confirmation and verify-by-read-back.
+This one cannot change anything, so the effort goes into never reporting a
+confident answer it did not actually establish. Same philosophy, aimed at the
+failure mode each domain actually has.
+
 ## Where the work lives
 
 The reading and normalizing layer is pure functions — no network, no framework,

@@ -188,6 +188,27 @@ rather than the server — SSH, or Tailscale as the Spark site's
 [network access guide](https://dgx-spark.warehack.ing/how-to/network-access/)
 describes — and run opencode there.
 
+## The same Spark can hold the rest of the rack
+
+Nothing here is specific to one server. Once a local model is serving on the
+Spark, every MCP server you add to that opencode config shares it.
+
+[mcidrac](https://mcidrac.warehack.ing) is the obvious companion if your rack
+has PowerEdges alongside the FortiGate — same approach, Dell iDRAC over Redfish
+instead of FortiOS over REST, and it has [its own
+walkthrough](https://mcidrac.warehack.ing/guides/dgx-spark/) of this exact
+setup that this guide was modelled on.
+
+Worth knowing that the two have different risk profiles, and the guidance
+differs accordingly. mcidrac can power-cycle a server and mount media, so its
+guide has you prove the model against fake hardware first and keep a human in
+the loop for destructive calls. Nothing here can change anything, which is why
+this guide tells you to point the model at a real firewall and let it be wrong
+in public.
+
+Add both and the machine on your desk answers questions about the whole rack
+without any of it leaving the building.
+
 ## Why this is worth the trouble
 
 A firewall is the thing you bought to decide what leaves your network. Reading
