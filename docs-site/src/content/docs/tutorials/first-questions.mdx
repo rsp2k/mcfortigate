@@ -29,8 +29,11 @@ wireless VAP, an SSL-VPN tunnel root — and those are hidden. `hidden_internal`
 out. If you want them included, ask for internal interfaces and the model
 passes `include_internal`.
 
-Worth knowing that `ssl.root` is hidden by that rule and is a genuine policy
-endpoint, so a policy can name an interface the default list omits.
+Which ones count as bookkeeping is decided by asking the appliance rather than
+by reading the names, and `hidden_internal_basis` tells you which of those
+happened. That distinction earned itself: guessing from name prefixes had
+`ssl.root` and `naf.root` [exactly backwards, in both
+directions](/reference/tools/#hiding-is-decided-by-the-appliance-not-by-the-name).
 
 The interface addresses are host addresses, not networks. An interface reported
 as `10.20.30.1/24` really does have `.1` on it. That sounds too obvious to
@@ -70,10 +73,14 @@ client with a lease that the appliance is actively talking to. A device in
 is not this firewall — either way, it is present and the appliance knows about
 it.
 
-The join is by MAC, and the three endpoints disagree about MAC casing. That is
-why the tool exists rather than the model doing it: a naive comparison across
-those endpoints matches nothing and quietly returns three partial records that
-look like three separate devices.
+The join is by MAC, and that is why the tool exists rather than the model doing
+it. A join key has to be canonical on every axis at once — case *and*
+punctuation — or `AA-BB-CC-DD-EE-FF` and `aa:bb:cc:dd:ee:ff` index one device
+as two, and the failure is silent: three partial records that look like three
+separate devices.
+
+It also means you can paste a MAC in whatever form you copied it from. A switch
+CLI's `2047.477d.db7b` and a label's `20-47-47-7D-DB-7B` both find the device.
 
 <Aside type="tip" title="This answer is a photograph">
 Everything here is live state. It was true when the call ran. A laptop that

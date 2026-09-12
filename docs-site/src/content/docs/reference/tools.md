@@ -17,6 +17,48 @@ Responses name both the appliance and the VDOM they were read from, since every
 call is scoped to a single VDOM and an answer about the wrong one is otherwise
 indistinguishable from an answer about yours.
 
+## Choosing a VDOM
+
+Every tool takes an optional `vdom` argument overriding the configured default
+for that one call, and every response reports the VDOM it **actually read**
+rather than the one you asked for.
+
+That is checked rather than assumed. Every cmdb and monitor endpoint returns a
+top-level `vdom`, and a disagreement between what was requested and what came
+back raises instead of being reported.
+
+:::caution[HTTP 424 does not mean the VDOM is wrong]
+A nonexistent VDOM answers **424**, not 404. But so does
+`monitor/wifi/spectrum` on an appliance with a perfectly valid VDOM, so 424 is
+not evidence of a bad VDOM name.
+
+The error text therefore names the VDOM it was reading and leaves the diagnosis
+to you, rather than asserting a cause it cannot actually distinguish.
+:::
+
+## What the filters removed
+
+A filtered response reports what the filter took out, which turns a silent
+empty result into a legible one.
+
+| Field | Meaning |
+|---|---|
+| `filters_applied` | Which filters were active |
+| `filtered_out` | How many rows each one removed |
+| `total_before_filters` | Rows before any filtering |
+| `filter_note` | Prose summary of the above |
+
+None of these appear when no filter ran, so an unfiltered response stays clean.
+
+The case this closes: `get_arp_table(interface="lann")` — a typo — used to
+return an empty list indistinguishable from a genuinely empty ARP table. Now
+the response says the filter removed every row, and the typo is visible in
+`filters_applied`.
+
+**Hiding internal interfaces counts as a filter**, and is reported as one. It
+is on by default, which makes it the single easiest filter to forget is
+running.
+
 ## Paging
 
 Twelve of the seventeen tools bound their results. Five do not, and the split
@@ -599,6 +641,60 @@ separate fields need changing; expanding objects lists the same policy twice
 for someone who only needs to open it once. Both directions lose information.
 :::
 
+#### The appliance's answer is not transitive
+
+Asking the appliance is necessary and still not sufficient, because its lookup
+reports only the **direct** holder of a reference and stops there.
+
+There is a real three-level chain on the lab appliance:
+
+```
+internal1  →  system.virtual-switch:internal  →  system.interface:lan  →  firewall.policy:1
+```
+
+Ask about `internal1` and the appliance returns exactly one row: the virtual
+switch. The policy that would actually break never appears, and the answer is
+not wrong — it is complete for the question it was asked, which is a narrower
+question than the one you had.
+
+So containers are walked through, and the two lists are kept deliberately
+separate:
+
+| Field | Holds |
+|---|---|
+| `references` | What the appliance named directly. Every row carries `depth: 0` |
+| `transitive_references` | What was reached through a group, zone, or switch. Each row carries `depth` and a `via` chain of container names |
+| `total_transitive_references` | Count of the second list |
+
+They are never merged, because the **remedy differs**. A direct reference is
+removed from the object holding it. A transitive one is removed by editing a
+container or a member list — and the policy that stops matching is not the
+object you edit.
+
+##### How far the walk got
+
+`expansion` answers that, and it is the field to check before trusting the
+list as a blast radius.
+
+| `status` | Meaning |
+|---|---|
+| `complete` | The chain ran out. The transitive list is everything |
+| `depth_capped` | The ceiling was hit with containers still unopened, named in `unexpanded` |
+| `incomplete` | Something along the way could not be read |
+
+It also reports `max_depth`, `deepest_depth`, and `unexpanded` when there is
+anything left unopened. **Only `complete` means you are looking at the whole
+blast radius.**
+
+The ceiling is three, for two reasons that happen to agree. The deepest real
+chain measured is switch port → hardware switch → software switch interface →
+policy, which puts the policy at depth two, so three leaves one level of
+headroom. And the cost is multiplicative: each level issues one usage call per
+container found at the level above, so a config with wide groups pays
+branching-factor-cubed at three and must not be allowed to pay it at ten.
+Deeper configurations exist in principle, and when one turns up the tool says
+`depth_capped` rather than pretending it finished.
+
 #### The verdict
 
 Five values, and `safe_to_delete` is present for only two of them.
@@ -757,12 +853,27 @@ the method and a `note` pointing at `get_routing_table` for the runtime value.
 Reporting only the absence of `ip` would answer *what is my WAN address* with
 *it has none*, which is the wrong kind of true.
 
-:::caution[`ssl.root` is hidden but real]
-The prefix rule that hides FortiOS bookkeeping also hides `ssl.root`, which is
-a genuine policy endpoint. A policy can therefore name an interface this tool
-omits by default. Pass `include_internal: true` when reconciling policy
-interfaces against the interface list.
-:::
+#### Hiding is decided by the appliance, not by the name
+
+Which interfaces are bookkeeping is a question the appliance can answer, and
+guessing from name prefixes gets it wrong.
+
+`monitor/system/available-interfaces` carries `valid_in_policy` per interface,
+which *is* the answer to "can a policy name this". The tool asks, and reports
+`hidden_internal_basis` as `appliance` when it got an answer or `name_prefix`
+when it had to fall back, with a note saying so.
+
+The prefix guess was wrong in both directions on FortiOS 7.0.14:
+
+| Interface | Names suggest | Appliance says |
+|---|---|---|
+| `ssl.root` | a real policy endpoint | **not** offered to policies |
+| `naf.root` | bookkeeping | **is** offered to policies |
+
+Exactly backwards, twice. And `wqt.root` and `l2t.root` were never hidden at
+all, because the prefix list reads `wqtn.` with an `n` — a one-character
+difference doing load-bearing work, which is its own argument against
+name-based inference.
 
 ### `list_vlans`
 
@@ -968,6 +1079,18 @@ source, the other two contribute their fields for that MAC whether or not the
 query itself matched there — which is the entire point, since the wifi endpoint
 frequently knows a MAC and nothing else useful about it.
 
-The three endpoints disagree about MAC casing, so every MAC is lowercased
-before the join. Skip that and the join silently matches nothing, producing
-three partial records that look like three devices.
+Every MAC is canonicalized to lowercase colon-separated form before the join.
+
+Two honest notes about that. On FortiOS 7.0.14, every endpoint that returned
+populated rows already used the colon form, so the normalization is insurance
+against a disagreement rather than a fix for an observed one. It costs nothing
+and removes a whole class of silent failure, where a key normalized on only one
+axis — case but not punctuation — indexes one device as two and reports it as
+unknown with nothing in the output hinting why.
+
+Where it demonstrably earns its keep is the **query** side. A MAC pasted from a
+switch CLI as `2047.477d.db7b`, or from a vendor label as `20-47-47-7D-DB-7B`,
+previously matched nothing at all. Both now work.
+
+The matcher also refuses to read an IPv4 address as a MAC fragment, since an
+address is nothing but hex digits and dots and would otherwise match one.

@@ -83,11 +83,18 @@ boolean with the supporting evidence attached.
 *What is 192.168.1.47?* touches the wireless client list, the DHCP lease table,
 and the ARP table. Each knows something different and each is keyed by MAC. As
 endpoint tools that is three calls and a join the model has to perform in its
-own head — and it will get the join wrong, because FortiOS reports MAC
-addresses in different cases across those three endpoints and the naive
-comparison silently matches nothing. Three partial records come back looking
-like three separate devices. As one tool, `find_device` normalizes first and
+own head, on a key that has to be canonical on case *and* punctuation at once.
+Get either axis wrong and the comparison silently matches nothing: three
+partial records come back looking like three separate devices, with nothing in
+the output saying why. As one tool, `find_device` canonicalizes first and
 returns one record per device with `seen_in` naming the sources.
+
+That one is worth being precise about, because it is easy to oversell. Every
+endpoint on the lab appliance already agreed on the colon form, so the
+normalization is insurance rather than a fix for a disagreement anyone has
+observed. It earns its place anyway — insurance against a silent join failure
+is cheap, and it is what lets a MAC pasted in any of the three common spellings
+find its device.
 
 *Where does 10.20.30.0/24 appear?* is the case where you do not yet know which
 kind of object holds the answer, which means an endpoint-shaped interface

@@ -180,6 +180,28 @@ This is the quirk most likely to be reintroduced, because summing a field named
 `reference_count` to get a reference count is the obvious thing to write, and
 the result looks plausible on an object that genuinely has none.
 
+## A hard switch lives in two tables and only one knows anything
+
+Same family as the wrong-table trap below, but worse, because this one
+corrupts a *walk* rather than a single lookup.
+
+A hardware switch such as `internal` appears in both `system.virtual-switch`
+and `system.interface`. Ask the usage endpoint about it with
+`q_name=virtual-switch` and you get HTTP 200 and an empty list. Ask with
+`q_name=interface` and the same key returns the membership that continues the
+chain.
+
+The obvious implementation is to derive the next query from the name of the
+table the reference was *found* in — you found `internal` in
+`system.virtual-switch`, so you ask about `virtual-switch`. That is the wrong
+table, it answers 200 with nothing, the walk stops at depth one, and because
+nothing failed the tool reports **`status: complete`**.
+
+That last part is what makes it worth its own entry. A truncated walk that
+announces itself is a limitation. A truncated walk that reports completeness is
+a wrong answer wearing the costume of a thorough one, and
+`safe_to_delete: true` is downstream of it.
+
 ## Asking the wrong table succeeds
 
 The same endpoint is asked about an object *within a named table*. Ask about a

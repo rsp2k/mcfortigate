@@ -42,9 +42,9 @@ asking the appliance's own reference lookup — the one the web UI uses, which
 knows all 234 tables that can reference an interface rather than the five a
 hand-rolled scan would check. `find_device` merges the wireless client list,
 the DHCP lease table, and the ARP table into a single record per device, which
-requires normalizing MAC casing first because FortiOS reports it differently on
-each of those three endpoints. That work happens once, here, instead of being
-rediscovered by every model that asks.
+requires canonicalizing the MAC first, on both case and punctuation, or one
+device indexes as two and reports as unknown. That work happens once, here,
+instead of being rediscovered by every model that asks.
 
 [The long version of the argument](/explanation/question-shaped-tools/) is worth
 reading before you decide how much of your own tooling to shape this way.
