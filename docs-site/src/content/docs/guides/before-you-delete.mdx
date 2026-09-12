@@ -217,3 +217,12 @@ in front of them.
 
 That division is the point rather than a limitation.
 [Why read-only is structural here](/explanation/read-only/).
+
+If you want the change made *programmatically* rather than by hand, that is a
+different tool and it already exists:
+[nautobot-ssot-fortinet](https://github.com/rsp2k/nautobot-ssot-fortinet)
+syncs FortiGate configuration in both directions against
+[Nautobot](https://nautobot.com/), with idempotent runs and destructive deletes
+off unless you opt in. Nautobot holds the intended state, the sync reconciles
+the appliance to it, and the reference check you just ran is how you decide
+whether that reconciliation is safe.

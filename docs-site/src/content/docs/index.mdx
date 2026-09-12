@@ -92,3 +92,25 @@ history records `"$FORTIGATE_TOKEN"` instead of the credential itself.
     [Multi-appliance setup](/guides/several-appliances/).
   </Card>
 </CardGrid>
+
+## When you need to change something
+
+This server cannot, by construction. Its sibling can.
+
+[**nautobot-ssot-fortinet**](https://github.com/rsp2k/nautobot-ssot-fortinet)
+syncs FortiGate configuration in both directions against
+[Nautobot](https://nautobot.com/) — firewall objects, policies, NAT, wireless
+networks and radio profiles, plus a live-status job that joins wifi clients,
+DHCP leases, and the ARP table the same way `find_device` does here. Runs are
+idempotent, and destructive deletes are off unless you opt into them per job.
+
+The two are worth understanding as a pair. Nautobot holds the state you
+*intend*; the sync reconciles the appliance to it. mcfortigate answers questions
+about what is *actually there* right now, and cannot alter the answer by
+asking — which is exactly what you want from the thing you check a change
+against.
+
+They also share a lineage. A good half of
+[the FortiOS behaviours handled here](/explanation/fortios-quirks/) were learned
+in that project, against the same appliance, by writing to it and finding out
+afterwards what a misread field had done.

@@ -1,12 +1,23 @@
 ---
 title: FortiOS behaviours handled here
-description: Six FortiOS quirks that fail silently rather than loudly, why each one is dangerous, and what mcfortigate does about it.
+description: FortiOS behaviours that fail silently rather than loudly, why each one is dangerous, and what mcfortigate does about it.
 ---
 
 These were found against real hardware rather than in documentation. What they
 have in common is the property that makes them worth writing down: each one
 fails *silently*. Nothing errors, nothing logs, and the answer you get back is
 confidently wrong in a way that reads as plausible.
+
+Roughly half of them were not learned here. They came from
+[nautobot-ssot-fortinet](https://github.com/rsp2k/nautobot-ssot-fortinet), a
+bidirectional Nautobot ↔ FortiGate sync built against the same FortiWiFi-61E on
+the same firmware, and they were learned the expensive way — by writing to an
+appliance and finding out afterwards what a misread field had done. Reading a
+route wrong costs you a wrong answer. Writing one wrong costs you a route.
+
+That is worth knowing because it explains the tone of this page. Each entry
+names a specific consequence rather than describing a format, because for
+several of them somebody already paid it.
 
 ## Boolean fields are strings
 
@@ -23,10 +34,12 @@ bool("disable")           # True   — wrong, and silent
 fortios_bool("disable")   # False
 ```
 
-In the sibling SSoT project this exact mistake flipped every non-blackhole
-route to blackhole, and it survived until someone compared the sync output
-against the appliance by hand. A disabled policy reported as enabled is the
-same class of error, and on a firewall it is the more expensive one.
+In [nautobot-ssot-fortinet](https://github.com/rsp2k/nautobot-ssot-fortinet)
+this exact mistake flipped every non-blackhole route to blackhole, and it
+survived until someone compared the sync output against the appliance by hand.
+That project writes, so the wrong reading became wrong configuration. Here it
+would only become a wrong sentence — a disabled policy reported as enabled,
+which is the same class of error and on a firewall still an expensive one.
 
 `fortios_bool` handles the strings, real booleans, and numerics, and takes an
 explicit default for the case where FortiOS omits the field entirely. Policies
