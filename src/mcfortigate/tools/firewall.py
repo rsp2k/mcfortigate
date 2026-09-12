@@ -19,6 +19,8 @@ from mcfortigate.client import (
     connect,
     fetch_object_usage,
     fetch_table,
+    resolve_vdom,
+    use_vdom,
 )
 from mcfortigate.config import TargetRegistry
 from mcfortigate.expansion import MAX_EXPANSION_DEPTH, expand
@@ -30,7 +32,7 @@ from mcfortigate.fortios import (
     summarize_policy,
     summarize_service,
 )
-from mcfortigate.paging import paginate
+from mcfortigate.paging import FilterTally, paginate
 
 
 def _matches(haystack: str, needle: str | None) -> bool:
@@ -44,6 +46,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
     @mcp.tool(annotations=read_only("List address objects"))
     def list_address_objects(
         target: str | None = None,
+        vdom: str | None = None,
         name_contains: str | None = None,
         address_type: str | None = None,
         limit: int | None = None,
@@ -62,7 +65,12 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
-            name_contains: Case-insensitive substring filter on the object name.
+            vdom: Virtual domain to read. Defaults to the one configured for this
+                target. The `vdom` field in the response names the one actually
+                read.
+            name_contains: Case-insensitive substring filter on the object NAME
+                only, never the value. Searching for a subnet or an IP finds
+                nothing here; search_config is the tool that looks at values.
             address_type: Exact FortiOS type filter, such as ipmask, fqdn, iprange,
                 geography, or mac.
             limit: Maximum objects to return. Defaults to 200, capped at 1000.
@@ -70,22 +78,34 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         """
         fgt = registry.resolve(target)
+        scope = resolve_vdom(fgt, vdom)
         with connect(fgt) as api:
+            use_vdom(api, vdom)
             raw_objects = fetch_table(api, ADDRESSES)
 
+        tally = FilterTally(name_contains=name_contains, address_type=address_type)
         results = []
         for raw in raw_objects:
             if not _matches(raw.get("name", ""), name_contains):
+                tally.drop("name_contains")
                 continue
             if address_type and raw.get("type", "ipmask") != address_type:
+                tally.drop("address_type")
                 continue
             results.append(summarize_address(raw))
         window, paging = paginate(results, limit, offset)
-        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "addresses": window}
+        return {
+            "target": fgt.name,
+            "vdom": scope,
+            **tally.describe(len(raw_objects)),
+            **paging,
+            "addresses": window,
+        }
 
     @mcp.tool(annotations=read_only("List address groups"))
     def list_address_groups(
         target: str | None = None,
+        vdom: str | None = None,
         name_contains: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
@@ -97,30 +117,46 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
+            vdom: Virtual domain to read. Defaults to the one configured for this
+                target. The `vdom` field in the response names the one actually
+                read.
             name_contains: Case-insensitive substring filter on the group name.
             limit: Maximum groups to return. Defaults to 200, capped at 1000.
             offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
+        scope = resolve_vdom(fgt, vdom)
         with connect(fgt) as api:
+            use_vdom(api, vdom)
             raw_groups = fetch_table(api, ADDRESS_GROUPS)
 
-        results = [
-            {
-                "name": raw.get("name", ""),
-                "members": member_names(raw.get("member")),
-                **({"comment": raw["comment"]} if raw.get("comment") else {}),
-            }
-            for raw in raw_groups
-            if _matches(raw.get("name", ""), name_contains)
-        ]
+        tally = FilterTally(name_contains=name_contains)
+        results = []
+        for raw in raw_groups:
+            if not _matches(raw.get("name", ""), name_contains):
+                tally.drop("name_contains")
+                continue
+            results.append(
+                {
+                    "name": raw.get("name", ""),
+                    "members": member_names(raw.get("member")),
+                    **({"comment": raw["comment"]} if raw.get("comment") else {}),
+                }
+            )
         window, paging = paginate(results, limit, offset)
-        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "groups": window}
+        return {
+            "target": fgt.name,
+            "vdom": scope,
+            **tally.describe(len(raw_groups)),
+            **paging,
+            "groups": window,
+        }
 
     @mcp.tool(annotations=read_only("List services"))
     def list_services(
         target: str | None = None,
+        vdom: str | None = None,
         name_contains: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
@@ -132,22 +168,40 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
+            vdom: Virtual domain to read. Defaults to the one configured for this
+                target. The `vdom` field in the response names the one actually
+                read.
             name_contains: Case-insensitive substring filter on the service name.
             limit: Maximum services to return. Defaults to 200, capped at 1000.
             offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
+        scope = resolve_vdom(fgt, vdom)
         with connect(fgt) as api:
+            use_vdom(api, vdom)
             raw_services = fetch_table(api, SERVICES)
 
-        results = [summarize_service(raw) for raw in raw_services if _matches(raw.get("name", ""), name_contains)]
+        tally = FilterTally(name_contains=name_contains)
+        results = []
+        for raw in raw_services:
+            if not _matches(raw.get("name", ""), name_contains):
+                tally.drop("name_contains")
+                continue
+            results.append(summarize_service(raw))
         window, paging = paginate(results, limit, offset)
-        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "services": window}
+        return {
+            "target": fgt.name,
+            "vdom": scope,
+            **tally.describe(len(raw_services)),
+            **paging,
+            "services": window,
+        }
 
     @mcp.tool(annotations=read_only("List firewall policies"))
     def list_policies(
         target: str | None = None,
+        vdom: str | None = None,
         enabled_only: bool = False,
         interface: str | None = None,
         address: str | None = None,
@@ -173,11 +227,16 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         The filters match names exactly and do not expand indirection. A policy
         referencing a group that contains your address will not match `address`,
         and a policy referencing a zone that contains your interface will not
-        match `interface`. Use find_references for the question "what touches
-        this object", which is a different and usually better question.
+        match `interface`. If `filtered_out` shows a filter removed everything,
+        that is the cue: the object is probably reached through a group or a
+        zone, and find_references answers "what touches this object" properly,
+        walking those containers.
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
+            vdom: Virtual domain to read. Defaults to the one configured for this
+                target. The `vdom` field in the response names the one actually
+                read.
             enabled_only: Drop policies whose status is disabled.
             interface: Keep only policies naming this interface directly as a
                 source or destination interface.
@@ -189,27 +248,37 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         """
         fgt = registry.resolve(target)
+        scope = resolve_vdom(fgt, vdom)
         with connect(fgt) as api:
+            use_vdom(api, vdom)
             raw_policies = fetch_table(api, POLICIES)
 
+        tally = FilterTally(
+            enabled_only=enabled_only, interface=interface, address=address, service=service
+        )
         results: list[dict[str, Any]] = []
         for index, raw in enumerate(raw_policies):
             summary = summarize_policy(raw)
             summary["order"] = index
             if enabled_only and not summary["enabled"]:
+                tally.drop("enabled_only")
                 continue
             if interface and interface not in (*summary["from"], *summary["to"]):
+                tally.drop("interface")
                 continue
             if address and address not in (*summary["source"], *summary["destination"]):
+                tally.drop("address")
                 continue
             if service and service not in summary["service"]:
+                tally.drop("service")
                 continue
             results.append(summary)
 
         window, paging = paginate(results, limit, offset)
         return {
             "target": fgt.name,
-            "vdom": fgt.vdom,
+            "vdom": scope,
+            **tally.describe(len(raw_policies)),
             **paging,
             "total_policies": len(raw_policies),
             "policies": window,
@@ -218,6 +287,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
     @mcp.tool(annotations=read_only("List virtual IPs"))
     def list_vips(
         target: str | None = None,
+        vdom: str | None = None,
         limit: int | None = None,
         offset: int | None = None,
     ) -> dict[str, Any]:
@@ -232,12 +302,17 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
+            vdom: Virtual domain to read. Defaults to the one configured for this
+                target. The `vdom` field in the response names the one actually
+                read.
             limit: Maximum VIPs to return. Defaults to 200, capped at 1000.
             offset: Index to start from, for paging through a large table.
 
         """
         fgt = registry.resolve(target)
+        scope = resolve_vdom(fgt, vdom)
         with connect(fgt) as api:
+            use_vdom(api, vdom)
             raw_vips = fetch_table(api, VIPS)
 
         results: list[dict[str, Any]] = []
@@ -260,10 +335,14 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             results.append(entry)
 
         window, paging = paginate(results, limit, offset)
-        return {"target": fgt.name, "vdom": fgt.vdom, **paging, "vips": window}
+        return {"target": fgt.name, "vdom": scope, **paging, "vips": window}
 
     @mcp.tool(annotations=read_only("Find what references an object"))
-    def find_references(object_name: str, target: str | None = None) -> dict[str, Any]:
+    def find_references(
+        object_name: str,
+        target: str | None = None,
+        vdom: str | None = None,
+    ) -> dict[str, Any]:
         """Find what references an address, service, or interface, before changing it.
 
         This answers the question that precedes every firewall change, which is
@@ -323,9 +402,13 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             object_name: Exact name of the address, group, service, virtual IP,
                 or interface. Matching is exact, not a search.
             target: Which FortiGate to query. Optional when only one is configured.
+            vdom: Virtual domain to search. Defaults to the one configured for this
+                target. An object with the same name can exist in several vdoms,
+                and this answer is about one of them.
 
         """
         fgt = registry.resolve(target)
+        scope = resolve_vdom(fgt, vdom)
         sources: dict[str, str] = {}
         cached: dict[str, list[dict[str, Any]]] = {}
 
@@ -344,6 +427,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             return rows
 
         with connect(fgt) as api:
+            use_vdom(api, vdom)
             raw_policies = read("policies", POLICIES)
             raw_addr_groups = read("address_groups", ADDRESS_GROUPS)
             raw_svc_groups = read("service_groups", SERVICE_GROUPS)
@@ -493,7 +577,7 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
 
         result: dict[str, Any] = {
             "target": fgt.name,
-            "vdom": fgt.vdom,
+            "vdom": scope,
             "object": object_name,
             "verdict": verdict,
             "total_references": len(usage_rows) if usage_ok else scanned,

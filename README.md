@@ -39,6 +39,15 @@ the address table about `wan1` finds nothing while the interface table finds
 two references, which is why this tool works out what kind of object a name
 refers to before it asks.
 
+It also walks past the direct referrer. The appliance's lookup is not
+transitive: an address inside a group reports the group and stops, so the
+policy that actually breaks never appears. On our lab, asking about the switch
+port `internal1` directly returns one row — a virtual switch. Walking two more
+levels, through the switch and the interface that carries it, reaches the
+firewall policy that a change to that port would disturb. Reached references
+are reported separately from direct ones, each carrying the chain that found
+it, and the walk is depth-capped and says so when it stops early.
+
 The answer is five-valued rather than a boolean, because there are genuinely
 five things that can be true. Beyond `referenced` and `no_references` there is
 `object_not_found` for a name that matches nothing,
@@ -49,13 +58,21 @@ A token scoped to firewall objects gets 403 on the routing table, and the
 client library turns every error status into an empty list, so doing least
 privilege correctly makes a false clean bill of health *more* likely, not less.
 
-**"What is 192.168.1.47?"** is `find_device`. It searches the wireless client
+**"What is 198.51.100.47?"** is `find_device`. It searches the wireless client
 list, the DHCP lease table, and the ARP table, then merges what each one knows
-about a MAC into a single record. FortiOS reports MAC addresses in different
-cases across those three endpoints, so joining them requires normalizing first
-or the join silently matches nothing.
+about a MAC into a single record.
 
-**"Where does 10.20.30.0/24 appear?"** is `search_config`, which looks through
+MAC addresses are normalized before that join, and before matching a query
+against them. The appliance we test on spells every MAC the same way, so the
+normalization is insurance rather than an observed fix on that firmware — but
+the query side is a real defect it closes: a MAC pasted from anywhere else
+arrives as `20-47-47-7D-DB-7B` or `2047.477d.db7b`, and a substring match
+against the colon-separated table form finds nothing and reports the device
+unknown. The matcher also refuses to read an IPv4 address as a MAC fragment,
+since an address is nothing but hex digits and dots and a loose matcher would
+let one match an unrelated device.
+
+**"Where does 203.0.113.0/24 appear?"** is `search_config`, which looks through
 addresses, groups, services, interfaces, routes, and policies at once, for when
 you do not yet know which kind of object holds the answer.
 
@@ -181,7 +198,7 @@ disabled thing as enabled, since `bool("disable")` is `True`. That single
 mistake once flipped every non-blackhole route to blackhole.
 
 **The same format means two things.** A dotted-mask string like
-`10.0.0.0 255.255.255.0` is a network in `firewall.address.subnet` but the
+`203.0.113.0 255.255.255.0` is a network in `firewall.address.subnet` but the
 interface's own address in `system.interface.ip`. Collapsing the second to its
 network address invents IPs that do not exist.
 
