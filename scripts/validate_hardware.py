@@ -17,11 +17,14 @@ this script says so.
 
 Usage:
 
-    FORTIGATE_HOST=fgt.example.com FORTIGATE_TOKEN=... \\
-      uv run python scripts/validate_hardware.py
+    uv run python scripts/validate_hardware.py
 
     # Against a named target when several are configured
     uv run python scripts/validate_hardware.py --target edge
+
+Credentials come from a `.env` file beside `pyproject.toml` when one exists,
+and from the environment otherwise. Anything already exported wins, so a
+one-off target can be given inline without editing the file.
 
 Nothing here writes to the appliance. Every call is a read.
 """
@@ -31,13 +34,44 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from mcfortigate.config import ConfigError, TargetRegistry
 from mcfortigate.server import build_server
+
+
+def load_dotenv(path: Path) -> int:
+    """Read `KEY=value` lines into the environment, without adding a dependency.
+
+    Deliberately small. It handles the forms an operator actually writes in a
+    .env file, which is comments, blank lines, optional `export`, and quoted
+    values, and it does not attempt interpolation. Existing environment
+    variables are left alone so an inline override beats the file.
+    """
+    if not path.is_file():
+        return 0
+    loaded = 0
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = line.removeprefix("export ").lstrip()
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded += 1
+    return loaded
 
 # Tools that need an argument beyond `target`, with a value chosen to be
 # harmless and to exercise the code path rather than to match anything. A
@@ -161,6 +195,11 @@ def _inspect(name: str, payload: Any) -> list[str]:
 
 async def run(target: str | None, verbose: bool) -> int:
     """Call every tool and print a report. Returns a process exit code."""
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    loaded = load_dotenv(env_file)
+    if verbose and loaded:
+        print(f"loaded {loaded} setting(s) from {env_file}")
+
     try:
         registry = TargetRegistry()
     except ConfigError as exc:
@@ -169,7 +208,8 @@ async def run(target: str | None, verbose: bool) -> int:
 
     if not len(registry):
         print(
-            "No targets configured. Set FORTIGATE_HOST and FORTIGATE_TOKEN before running this.",
+            f"No targets configured. Set FORTIGATE_HOST and FORTIGATE_TOKEN in the environment, "
+            f"or put them in {env_file}.",
             file=sys.stderr,
         )
         return 2

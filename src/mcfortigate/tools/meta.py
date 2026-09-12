@@ -11,6 +11,7 @@ from mcfortigate.client import (
     ADDRESS_GROUPS,
     ADDRESSES,
     INTERFACES,
+    MON_RESOURCE_USAGE,
     MON_SYSTEM_STATUS,
     POLICIES,
     SERVICES,
@@ -60,15 +61,20 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
             "targets": [target.describe() for target in targets],
         }
 
-    @mcp.tool(annotations=read_only("Show appliance identity and firmware"))
+    @mcp.tool(annotations=read_only("Show appliance identity and health"))
     def get_system_status(target: str | None = None) -> dict[str, Any]:
-        """Report appliance identity: model, serial, firmware, hostname, uptime.
+        """Report appliance identity and health: model, serial, firmware, load.
 
         The serial and firmware version come from the response envelope rather
         than the body. FortiOS puts them as siblings of the results object on
         every cmdb call, and helpers that unwrap straight to results discard
         them, which is why they appear missing from the API until you read the
         raw response.
+
+        Fields that a given firmware does not report are omitted rather than
+        returned as null, so an absent key means the appliance did not offer the
+        value. FortiOS 7.0.14, for instance, reports no uptime anywhere in the
+        monitor tree.
 
         Args:
             target: Which FortiGate to query. Optional when only one is configured.
@@ -78,23 +84,48 @@ def register(mcp: FastMCP, registry: TargetRegistry) -> None:
         with connect(fgt) as api:
             envelope = fetch_envelope(api, SYSTEM_GLOBAL)
             status = fetch_monitor(api, MON_SYSTEM_STATUS)
+            usage = fetch_monitor(api, MON_RESOURCE_USAGE)
 
-        results = envelope.get("results") or {}
+        config = envelope.get("results") or {}
         runtime = status.rows[0] if status.rows else {}
+        load = usage.rows[0] if usage.rows else {}
 
-        return {
+        def current(metric: str) -> Any:
+            """Pull the current reading out of a resource-usage series."""
+            series = load.get(metric)
+            if isinstance(series, list) and series and isinstance(series[0], dict):
+                return series[0].get("current")
+            return None
+
+        result: dict[str, Any] = {
             "target": fgt.name,
             "url": fgt.url,
-            "hostname": results.get("hostname"),
-            "alias": results.get("alias"),
+            "hostname": runtime.get("hostname") or config.get("hostname"),
+            "model": runtime.get("model_name") or runtime.get("model"),
             "serial": envelope.get("serial"),
             "version": envelope.get("version"),
             "build": envelope.get("build"),
             "vdom": fgt.vdom,
-            "timezone": results.get("timezone"),
-            "uptime_seconds": runtime.get("uptime"),
             "runtime_status": status.describe(),
         }
+        optional = {
+            "alias": config.get("alias"),
+            "timezone": config.get("timezone"),
+            "model_number": runtime.get("model_number"),
+            "log_disk": runtime.get("log_disk_status"),
+            # Not present on 7.0.14, but newer firmware does report it and the
+            # lookup costs nothing. See the test that covers both firmwares.
+            "uptime_seconds": runtime.get("uptime"),
+            "cpu_percent": current("cpu"),
+            "memory_percent": current("mem"),
+            "sessions": current("session"),
+        }
+        result.update({key: value for key, value in optional.items() if value is not None})
+        # An absent load figure has two causes worth distinguishing: this
+        # firmware does not report it, or we were not allowed to ask.
+        if not usage.usable:
+            result["load_status"] = usage.describe()
+        return result
 
     @mcp.tool(annotations=read_only("Search the whole configuration"))
     def search_config(

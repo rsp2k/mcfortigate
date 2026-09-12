@@ -99,7 +99,7 @@ See `.env.example` for the optional settings, which are `FORTIGATE_NAME`,
 | Tool | Answers |
 |---|---|
 | `list_targets` | Which appliances can this server reach |
-| `get_system_status` | Model, serial, firmware, hostname, uptime |
+| `get_system_status` | Model, serial, firmware, hostname, CPU and memory |
 | `search_config` | Where does this term appear, anywhere in the config |
 
 ### Firewall

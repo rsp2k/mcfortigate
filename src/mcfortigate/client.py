@@ -44,6 +44,7 @@ SYSTEM_GLOBAL = "api/v2/cmdb/system/global"
 
 # Monitor endpoints report observed state rather than configuration.
 MON_SYSTEM_STATUS = "api/v2/monitor/system/status"
+MON_RESOURCE_USAGE = "api/v2/monitor/system/resource/usage"
 MON_WIFI_CLIENTS = "api/v2/monitor/wifi/client"
 MON_DHCP_LEASES = "api/v2/monitor/system/dhcp"
 MON_ARP = "api/v2/monitor/network/arp"
