@@ -1,6 +1,6 @@
 ---
 title: Querying several appliances
-description: Setting up FORTIGATE_TARGETS, choosing aliases a model will use correctly, and the JSON quoting that trips everyone once.
+description: Setting up FORTIGATE_TARGETS, choosing aliases a model will use correctly, the JSON quoting that trips everyone once, and where multi-target stops being fleet management.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -116,7 +116,68 @@ answers:
 > Check every firewall for a policy allowing inbound SSH from anywhere.
 
 The model calls `list_targets`, then `list_policies` per appliance, and
-compares. Keep an eye on the size of what comes back — three appliances with
-large rulesets is three large rulesets in the context, and narrowing with a
-filter first (`service: "SSH"`) is the difference between a fast answer and a
-slow one.
+compares.
+
+What is worth understanding is that **the model is doing the fan-out, not the
+server**. There is no tool that queries every appliance at once, and that is a
+design decision rather than a gap — see below.
+
+## This is multi-target, not fleet management
+
+The distinction matters when you are deciding whether to point this at ten
+appliances or a hundred.
+
+**There is no fan-out.** Every tool answers about exactly one appliance. *Check
+every firewall for X* is N separate tool calls that the model issues and
+correlates itself. It works, and it is visible in the transcript, but nothing
+is parallelised on your behalf.
+
+**Sessions are per call, not pooled.** Each tool call opens a fresh session to
+its appliance and closes it afterwards. Nothing is cached between calls. That
+is the right trade for a server that may sit idle for hours between questions —
+a pooled connection to a firewall is a stale connection waiting to happen — but
+it means the cost is linear and paid every time. A `find_references` call
+measured at roughly 1.1 s against the lab appliance is roughly 11 s across ten
+of them, in sequence.
+
+**The context fills up faster than the clock runs out.** Three appliances with
+large rulesets is three large rulesets in one conversation. This is usually the
+binding constraint long before latency is.
+
+So the practical ceiling is *a handful of appliances you ask questions about*,
+not *an estate you inventory nightly*. Five is comfortable. Fifty is the wrong
+shape of problem for this tool.
+
+### Making the fan-out cheaper
+
+Three things help, in rough order of effect.
+
+**Filter before you fan out.** `list_policies` with `service: "SSH"` across
+three appliances is fast; three unfiltered rulesets is slow and floods the
+context. The same applies to `search_config` with `include_policies: false`
+when only object definitions matter.
+
+**Read `total_available`, not just what came back.** Every listing tool bounds
+its result at 200 rows by default. Across several appliances it is easy to
+compare pages rather than tables without noticing —
+[the paging contract](/reference/tools/#paging) is what tells you the
+difference.
+
+**Ask orientation questions first.** `list_targets` costs nothing, and
+`get_system_status` per appliance is small. Establishing which boxes are on
+which firmware before asking an expensive question often narrows it to one.
+
+### When to reach for the sibling instead
+
+If the question is really *what is the state of the whole estate, on a
+schedule*, this is the wrong tool and
+[nautobot-ssot-fortinet](https://nautobot-ssot-fortinet.readthedocs.io) is the
+right one. It syncs FortiGate configuration into
+[Nautobot](https://nautobot.com/) as scheduled Jobs, so the repeated
+whole-estate work happens once, into a database built for it — and then you ask
+Nautobot, which is designed to answer across many devices, instead of asking N
+appliances one at a time.
+
+The two compose well. Nautobot for the estate-wide and the historical,
+mcfortigate for *what is this specific box doing right now*, which is the
+question a sync cannot answer because its answer changes between syncs.
